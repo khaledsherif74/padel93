@@ -22,14 +22,16 @@ export function applyDocumentDirection(language) {
   document.body.dataset.language = language;
 }
 
-await i18n.use(initReactI18next).init({
+const initialLanguage = readLanguage();
+
+i18n.use(initReactI18next).init({
   resources: { ar, en },
-  lng: readLanguage(),
+  lng: initialLanguage,
   fallbackLng: 'ar',
   interpolation: { escapeValue: false },
 });
 
-applyDocumentDirection(i18n.language);
+applyDocumentDirection(initialLanguage);
 
 i18n.on('languageChanged', (language) => {
   try {
