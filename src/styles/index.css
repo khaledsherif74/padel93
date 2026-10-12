@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&family=Tajawal:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --navy: #002346;
+  --navy-rgb: 0 35 70;
+  --night: #00183e;
+  --night-rgb: 0 24 62;
+  --court: #275e97;
+  --court-rgb: 39 94 151;
+  --edge: #01649b;
+  --edge-rgb: 1 100 155;
+  --ball: #92c64c;
+  --ball-rgb: 146 198 76;
+  --white: #f4f7fa;
+  --white-rgb: 244 247 250;
+
+  color: var(--navy);
+  background: var(--white);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--navy);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--white);
+  font-family: 'Tajawal', sans-serif;
+}
+
+body[data-language='ar'] {
+  font-family: 'Tajawal', sans-serif;
+}
+
+body[data-language='en'] {
+  font-family: 'Tajawal', sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+button,
+label,
+nav {
+  font-family: 'Cairo', sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(146, 198, 76, 0.32);
+  color: var(--navy);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.diagonal-cut {
+  clip-path: polygon(17% 0, 100% 0, 100% 100%, 0 82%);
+}
+
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  inset-inline-start: 0.75rem;
+  z-index: 100;
+  transform: translateY(-180%);
+  border-radius: 0.75rem;
+  background: var(--ball);
+  color: var(--navy);
+  padding: 0.75rem 1rem;
+  font-family: 'Cairo', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 35, 70, 0.18);
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 3px solid rgba(1, 100, 155, 0.4);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
