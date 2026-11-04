@@ -52,6 +52,8 @@ export const api = createApi({
     'Permissions',
     'Audit',
     'PaymentFlag',
+    'ClosingSummary',
+    'StaffDateAccess',
   ],
   endpoints: (builder) => ({
     login: builder.mutation({
@@ -232,6 +234,8 @@ export const api = createApi({
         'Transfer',
         'Goal',
         'PaymentFlag',
+        'Dashboard',
+        'ClosingSummary',
       ],
     }),
     getShifts: builder.query({
@@ -243,6 +247,10 @@ export const api = createApi({
       providesTags: (_result, _error, id) => [{ type: 'Shift', id }],
     }),
 
+    getAppointmentCourts: builder.query({
+      query: () => '/appointments/courts',
+      providesTags: ['Appointment'],
+    }),
     getAppointments: builder.query({
       query: (params) => ({ url: '/appointments', params }),
       providesTags: (result) => [
@@ -266,6 +274,7 @@ export const api = createApi({
         'Dashboard',
         'Report',
         'Audit',
+        'ClosingSummary',
       ],
     }),
     getIncomes: builder.query({
@@ -275,7 +284,7 @@ export const api = createApi({
 
     createExpense: builder.mutation({
       query: (body) => ({ url: '/expenses', method: 'POST', body }),
-      invalidatesTags: ['Expense', 'Shift'],
+      invalidatesTags: ['Expense', 'Shift', 'Dashboard', 'ClosingSummary'],
     }),
     getExpenses: builder.query({
       query: (params) => ({ url: '/expenses', params }),
@@ -288,7 +297,7 @@ export const api = createApi({
 
     createTransfer: builder.mutation({
       query: (body) => ({ url: '/transfers', method: 'POST', body }),
-      invalidatesTags: ['Transfer', 'Shift'],
+      invalidatesTags: ['Transfer', 'Shift', 'Dashboard', 'ClosingSummary'],
     }),
     getTransfers: builder.query({
       query: (params) => ({ url: '/transfers', params }),
@@ -296,7 +305,7 @@ export const api = createApi({
     }),
     cancelTransfer: builder.mutation({
       query: (id) => ({ url: `/transfers/${id}/cancel`, method: 'POST' }),
-      invalidatesTags: ['Transfer', 'Shift'],
+      invalidatesTags: ['Transfer', 'Shift', 'Dashboard', 'ClosingSummary'],
     }),
     confirmTransfer: builder.mutation({
       query: ({ id, receivedAmount, note }) => ({
@@ -304,7 +313,7 @@ export const api = createApi({
         method: 'POST',
         body: { receivedAmount, ...(note ? { note } : {}) },
       }),
-      invalidatesTags: ['Transfer', 'Shift', 'Dashboard'],
+      invalidatesTags: ['Transfer', 'Shift', 'Dashboard', 'ClosingSummary'],
     }),
     resolveTransfer: builder.mutation({
       query: ({ id, settledAmount, note }) => ({
@@ -312,7 +321,7 @@ export const api = createApi({
         method: 'POST',
         body: { settledAmount, note },
       }),
-      invalidatesTags: ['Transfer', 'Dashboard', 'Audit'],
+      invalidatesTags: ['Transfer', 'Shift', 'Dashboard', 'ClosingSummary', 'Audit'],
     }),
 
     verifyIncome: builder.mutation({
@@ -351,7 +360,7 @@ export const api = createApi({
         method: 'POST',
         body: { reason },
       }),
-      invalidatesTags: ['Expense', 'Dashboard', 'Report', 'Audit'],
+      invalidatesTags: ['Expense', 'Dashboard', 'Report', 'ClosingSummary', 'Audit'],
     }),
 
     getPaymentFlags: builder.query({
@@ -373,6 +382,35 @@ export const api = createApi({
     getMyDrawer: builder.query({
       query: () => '/dashboard/my-drawer',
       providesTags: ['Dashboard', 'Shift', 'Income', 'Expense', 'Transfer'],
+    }),
+    getStaffFinancialOverview: builder.query({
+      query: (params) => ({ url: '/dashboard/staff-overview', params }),
+      providesTags: ['Dashboard', 'Shift', 'Income', 'Expense'],
+    }),
+    getShiftClosingSummary: builder.query({
+      query: (id) => `/shifts/${id}/closing-summary`,
+      providesTags: (_result, _error, id) => [{ type: 'ClosingSummary', id }],
+    }),
+
+    getMyStaffDateAccessRequests: builder.query({
+      query: () => '/staff-date-access/mine',
+      providesTags: ['StaffDateAccess'],
+    }),
+    createStaffDateAccessRequest: builder.mutation({
+      query: (body) => ({ url: '/staff-date-access', method: 'POST', body }),
+      invalidatesTags: ['StaffDateAccess', 'Notification'],
+    }),
+    getPendingStaffDateAccessRequests: builder.query({
+      query: () => '/staff-date-access',
+      providesTags: ['StaffDateAccess'],
+    }),
+    decideStaffDateAccessRequest: builder.mutation({
+      query: ({ id, decision, note }) => ({
+        url: `/staff-date-access/${id}/decision`,
+        method: 'POST',
+        body: { decision, ...(note ? { note } : {}) },
+      }),
+      invalidatesTags: ['StaffDateAccess', 'Notification', 'Audit'],
     }),
 
     ackBooklyChange: builder.mutation({
@@ -480,4 +518,11 @@ export const {
   useGetPaymentFlagsQuery,
   useDecidePaymentFlagMutation,
   useGetMyDrawerQuery,
+  useGetStaffFinancialOverviewQuery,
+  useGetShiftClosingSummaryQuery,
+  useGetAppointmentCourtsQuery,
+  useGetMyStaffDateAccessRequestsQuery,
+  useCreateStaffDateAccessRequestMutation,
+  useGetPendingStaffDateAccessRequestsQuery,
+  useDecideStaffDateAccessRequestMutation,
 } = api;

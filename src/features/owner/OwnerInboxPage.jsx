@@ -12,6 +12,8 @@ import {
   useVerifyIncomeMutation,
   useResolveTransferMutation,
   useAckBooklyChangeMutation,
+  useGetPendingStaffDateAccessRequestsQuery,
+  useDecideStaffDateAccessRequestMutation,
 } from '../../app/api';
 import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
@@ -35,6 +37,10 @@ export default function OwnerInboxPage() {
   );
   const changes = useGetBooklyChangesQuery();
   const notifications = useGetNotificationsQuery({ unread: 'true', limit: 20 });
+  const dateAccessRequests = useGetPendingStaffDateAccessRequestsQuery(undefined, {
+    pollingInterval: 15_000,
+    refetchOnFocus: true,
+  });
 
   const [active, setActive] = useState(null);
 
@@ -42,6 +48,7 @@ export default function OwnerInboxPage() {
   const [verifyIncome, incomeState] = useVerifyIncomeMutation();
   const [resolveTransfer, transferState] = useResolveTransferMutation();
   const [ackBooklyChange, booklyState] = useAckBooklyChangeMutation();
+  const [decideDateAccess, dateAccessState] = useDecideStaffDateAccessRequestMutation();
 
   const sections = useMemo(
     () => [
@@ -73,8 +80,15 @@ export default function OwnerInboxPage() {
         tone: 'warning',
         icon: RefreshCw,
       },
+      {
+        key: 'dateAccess',
+        title: t('owner.pastDayAccessRequests', { defaultValue: 'Past-day access requests' }),
+        count: dateAccessRequests.data?.items?.length ?? 0,
+        tone: 'warning',
+        icon: ClipboardCheck,
+      },
     ],
-    [changes.data, expenses.data, incomes.data, t, transfers.data],
+    [changes.data, dateAccessRequests.data, expenses.data, incomes.data, t, transfers.data],
   );
 
   const refreshAll = () => {
@@ -83,6 +97,7 @@ export default function OwnerInboxPage() {
     transfers.refetch();
     changes.refetch();
     notifications.refetch();
+    dateAccessRequests.refetch();
   };
 
   async function submitActive() {
@@ -117,6 +132,14 @@ export default function OwnerInboxPage() {
         await ackBooklyChange(active.item.id).unwrap();
       }
 
+      if (active.type === 'dateAccess') {
+        await decideDateAccess({
+          id: active.item.id,
+          decision: active.decision,
+          ...(active.note?.trim() ? { note: active.note.trim() } : {}),
+        }).unwrap();
+      }
+
       setActive(null);
     } catch {
       // Mutation error appears in the modal.
@@ -124,12 +147,17 @@ export default function OwnerInboxPage() {
   }
 
   const activeError =
-    expenseState.error || incomeState.error || transferState.error || booklyState.error;
+    expenseState.error ||
+    incomeState.error ||
+    transferState.error ||
+    booklyState.error ||
+    dateAccessState.error;
   const activeLoading =
     expenseState.isLoading ||
     incomeState.isLoading ||
     transferState.isLoading ||
-    booklyState.isLoading;
+    booklyState.isLoading ||
+    dateAccessState.isLoading;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-7">
@@ -145,7 +173,7 @@ export default function OwnerInboxPage() {
         }
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {sections.map((section) => (
           <Card key={section.key} className="p-5">
             <div className="flex items-center justify-between gap-3">
@@ -249,6 +277,36 @@ export default function OwnerInboxPage() {
           </QueueSection>
 
           <QueueSection
+            title={t('owner.pastDayAccessRequests', { defaultValue: 'Past-day access requests' })}
+            icon={ClipboardCheck}
+            state={dateAccessRequests}
+            empty={t('owner.noPastDayAccessRequests', {
+              defaultValue: 'There are no past-day access requests waiting for approval.',
+            })}
+            t={t}
+          >
+            {dateAccessRequests.data?.items?.map((item) => (
+              <QueueRow
+                key={item.id}
+                title={`${item.staff?.name ?? t('role.STAFF')} · ${item.businessDate}`}
+                subtitle={item.reason}
+                amount={t('owner.accessFor24Hours', {
+                  defaultValue: 'Access for 24 hours after approval',
+                })}
+                badge={item.status}
+                onPrimary={() =>
+                  setActive({ type: 'dateAccess', item, decision: 'APPROVED', note: '' })
+                }
+                onSecondary={() =>
+                  setActive({ type: 'dateAccess', item, decision: 'REJECTED', note: '' })
+                }
+                primaryLabel={t('owner.approve', { defaultValue: 'Approve' })}
+                secondaryLabel={t('owner.reject', { defaultValue: 'Reject' })}
+              />
+            ))}
+          </QueueSection>
+
+          <QueueSection
             title={t('owner.booklyChanges')}
             icon={RefreshCw}
             state={changes}
@@ -337,6 +395,8 @@ function actionTitle(active, t) {
   if (active.type === 'income')
     return active.decision === 'VERIFIED' ? t('owner.verifyPayment') : t('owner.rejectPayment');
   if (active.type === 'transfer') return t('owner.resolveTransfer');
+  if (active.type === 'dateAccess')
+    return t('owner.pastDayAccessDecision', { defaultValue: 'Review past-day access request' });
   return t('owner.ackBookly');
 }
 
@@ -347,6 +407,66 @@ function DecisionContent({ active, setActive, loading, error, onSubmit, t, local
     active.type === 'transfer';
 
   const isBookly = active.type === 'bookly';
+
+  if (active.type === 'dateAccess') {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-navy/10 bg-white p-4">
+          <p className="font-cairo text-xs font-semibold text-navy/45">
+            {t('owner.staffMember', { defaultValue: 'Staff member' })}
+          </p>
+          <p className="mt-1 font-cairo text-lg font-black text-navy">
+            {active.item.staff?.name ?? '—'}
+          </p>
+          <p className="mt-3 font-cairo text-xs font-semibold text-navy/45">
+            {t('staff.businessDayLabel', { defaultValue: 'Business day' })}
+          </p>
+          <p className="mt-1 font-cairo text-base font-bold text-navy">
+            {active.item.businessDate}
+          </p>
+          <p className="mt-3 font-cairo text-xs font-semibold text-navy/45">
+            {t('common.reason', { defaultValue: 'Reason' })}
+          </p>
+          <p className="mt-1 font-tajawal text-sm leading-6 text-navy/75">{active.item.reason}</p>
+        </div>
+        <label className="block">
+          <span className="mb-2 block font-cairo text-sm font-semibold text-navy">
+            {t('owner.decisionNote', { defaultValue: 'Decision note (optional)' })}
+          </span>
+          <textarea
+            value={active.note ?? ''}
+            onChange={(event) => setActive((current) => ({ ...current, note: event.target.value }))}
+            rows={3}
+            className="w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-sm text-navy"
+          />
+        </label>
+        {error && (
+          <p className="font-tajawal text-sm text-red-700" role="alert">
+            {errorMessage(error, t)}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button loading={loading} onClick={onSubmit}>
+            <Check className="size-4" aria-hidden="true" />
+            {active.decision === 'APPROVED'
+              ? t('owner.approve', { defaultValue: 'Approve' })
+              : t('owner.reject', { defaultValue: 'Reject' })}
+          </Button>
+          <Button variant="ghost" onClick={() => setActive(null)} disabled={loading}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+        {active.decision === 'APPROVED' && (
+          <p className="font-tajawal text-xs leading-5 text-navy/50">
+            {t('owner.accessFor24Hours', {
+              defaultValue:
+                'Approval allows this staff member to view and record payments for this business day for 24 hours.',
+            })}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   if (isBookly) {
     return (

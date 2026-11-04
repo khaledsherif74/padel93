@@ -15,14 +15,13 @@ import {
   ShieldCheck,
   UsersRound,
   WalletCards,
-  CreditCard,
 } from 'lucide-react';
 import AppHeader from './AppHeader';
 import SideNav from './SideNav';
 import MobileNav from './MobileNav';
 import MobileDrawer from './MobileDrawer';
 import { authLoggedOut } from '../../features/auth/authSlice';
-import { selectPermissions, selectRole, selectUser } from '../../features/auth/authSelectors';
+import { selectRole, selectUser } from '../../features/auth/authSelectors';
 import { useTranslation } from 'react-i18next';
 
 export default function AppShell() {
@@ -30,7 +29,6 @@ export default function AppShell() {
   const navigate = useNavigate();
   const user = useSelector(selectUser);
   const role = useSelector(selectRole);
-  const permissions = useSelector(selectPermissions);
   const { t } = useTranslation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -39,7 +37,7 @@ export default function AppShell() {
     navigate('/login', { replace: true });
   }
 
-  const links = getLinksForRole(role, permissions);
+  const links = getLinksForRole(role);
 
   return (
     <div className="min-h-screen bg-white text-navy">
@@ -66,7 +64,7 @@ export default function AppShell() {
   );
 }
 
-function getLinksForRole(role, permissions) {
+function getLinksForRole(role) {
   if (role === 'OWNER') {
     return [
       { to: '/app/owner', key: 'owner.navDashboard', icon: Home, end: true },
@@ -99,16 +97,8 @@ function getLinksForRole(role, permissions) {
       { to: '/app/accountant/expenses', key: 'accountant.navExpenses', icon: ReceiptText },
     ];
   }
-  const staffLinks = [
+  return [
     { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-    { to: '/app/staff/appointments', key: 'nav.appointments', icon: CalendarDays },
-    { to: '/app/staff/quick-add', key: 'nav.quickAdd', icon: CreditCard },
-    { to: '/app/staff/expenses', key: 'nav.expenses', icon: ReceiptText },
-    { to: '/app/staff/records', key: 'nav.records', icon: BarChart3 },
-    { to: '/app/staff/payment-flags', key: 'owner.paymentFlags', icon: AlertTriangle },
+    { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
   ];
-  if (permissions?.['transfer.create'] !== false) {
-    staffLinks.splice(4, 0, { to: '/app/staff/handover', key: 'nav.handover', icon: Send });
-  }
-  return staffLinks;
 }

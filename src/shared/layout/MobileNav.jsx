@@ -49,7 +49,6 @@ export default function MobileNav() {
     <Nav
       links={[
         { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-        { to: '/app/staff/payment-flags', key: 'owner.paymentFlags', icon: AlertTriangle },
         { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
       ]}
       t={t}

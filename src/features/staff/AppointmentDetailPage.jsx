@@ -1,5 +1,5 @@
-import { ArrowLeft, Banknote, CreditCard, ReceiptText } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Banknote, CreditCard, ReceiptText, ShoppingBag } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -16,13 +16,13 @@ import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
 import Button from '../../shared/ui/Button';
 import Badge from '../../shared/ui/Badge';
-import Input from '../../shared/ui/Input';
 import Select from '../../shared/ui/Select';
 import MoneyInput from '../../shared/ui/MoneyInput';
 import Modal from '../../shared/ui/Modal';
 import ReceiptCapture from '../../shared/ui/ReceiptCapture';
 import ErrorState from '../../shared/ui/ErrorState';
 import Skeleton from '../../shared/ui/Skeleton';
+import ShopSaleModal from './ShopSaleModal';
 
 const paymentSchema = z.object({
   amount: z
@@ -30,7 +30,6 @@ const paymentSchema = z.object({
     .trim()
     .regex(/^\d+(\.\d{1,2})?$/),
   method: z.enum(['CASH', 'VISA', 'INSTAPAY']),
-  reference: z.string().trim().max(64).optional(),
   note: z.string().trim().max(500).optional(),
 });
 
@@ -39,6 +38,7 @@ export default function AppointmentDetailPage() {
   const { id } = useParams();
   const query = useGetAppointmentQuery(id);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [shopSaleOpen, setShopSaleOpen] = useState(false);
   const permissions = useSelector(selectPermissions);
 
   if (query.isLoading) {
@@ -64,9 +64,11 @@ export default function AppointmentDetailPage() {
   const appointment = query.data;
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const badge = paymentBadge(appointment.payment?.state, t);
-  const hasRecordedAppointmentPayment = (appointment.incomes ?? []).some(
+  const appointmentPayments = (appointment.incomes ?? []).filter(
     (income) => income.source === 'APPOINTMENT',
   );
+  const linkedShopSales = (appointment.incomes ?? []).filter((income) => income.source === 'SHOP');
+  const hasRecordedAppointmentPayment = appointmentPayments.length > 0;
   const due = appointment.payment?.due ?? 0;
 
   return (
@@ -124,15 +126,19 @@ export default function AppointmentDetailPage() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {permissions?.['income.create'] !== false &&
-              !hasRecordedAppointmentPayment &&
-              due > 0 && (
-                <Button onClick={() => setPaymentOpen(true)}>
-                  <Banknote className="size-4" aria-hidden="true" />
-                  {t('staff.recordPayment')}
-                </Button>
-              )}
-            {hasRecordedAppointmentPayment && (
+            {permissions?.['income.create'] !== false && due > 0 && (
+              <Button onClick={() => setPaymentOpen(true)}>
+                <Banknote className="size-4" aria-hidden="true" />
+                {t('staff.recordPayment')}
+              </Button>
+            )}
+            {permissions?.['income.create'] !== false && (
+              <Button variant="secondary" onClick={() => setShopSaleOpen(true)}>
+                <ShoppingBag className="size-4" aria-hidden="true" />
+                {t('staff.recordLinkedShopSale')}
+              </Button>
+            )}
+            {hasRecordedAppointmentPayment && due <= 0 && (
               <Badge tone="success">{t('staff.appointmentPaymentRecorded')}</Badge>
             )}
           </div>
@@ -151,12 +157,12 @@ export default function AppointmentDetailPage() {
         </div>
 
         <div className="mt-5 space-y-3">
-          {(appointment.incomes ?? []).length === 0 ? (
+          {appointmentPayments.length === 0 ? (
             <p className="rounded-xl bg-navy/5 p-4 font-tajawal text-sm text-navy/55">
               {t('staff.noPayments')}
             </p>
           ) : (
-            appointment.incomes.map((income) => (
+            appointmentPayments.map((income) => (
               <div
                 key={income.id}
                 className="flex items-center justify-between gap-4 rounded-xl border border-navy/8 p-4"
@@ -176,6 +182,38 @@ export default function AppointmentDetailPage() {
         </div>
       </Card>
 
+      {linkedShopSales.length > 0 && (
+        <Card className="p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-full border border-ball text-ball">
+              <ShoppingBag className="size-5" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="font-cairo text-lg font-extrabold">{t('staff.linkedShopSales')}</h2>
+              <p className="font-tajawal text-xs text-navy/50">{t('staff.linkedShopSaleHint')}</p>
+            </div>
+          </div>
+          <div className="mt-5 space-y-3">
+            {linkedShopSales.map((income) => (
+              <div
+                key={income.id}
+                className="flex items-center justify-between gap-4 rounded-xl border border-navy/8 p-4"
+              >
+                <div>
+                  <p className="font-cairo text-sm font-bold">{income.note || t('source.SHOP')}</p>
+                  <p className="mt-1 font-tajawal text-xs text-navy/50">
+                    {t(`method.${income.method}`)} · {formatDateTime(income.recordedAt, locale)}
+                  </p>
+                </div>
+                <p className="font-cairo text-sm font-black">
+                  {formatEgpWithCurrency(income.amount, locale)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card className="p-5 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <Detail label={t('staff.court')} value={appointment.court?.name || '—'} />
@@ -183,6 +221,21 @@ export default function AppointmentDetailPage() {
           <Detail label={t('staff.phone')} value={appointment.customer?.phone || '—'} />
           <Detail label={t('staff.bookingStatus')} value={appointment.bookingStatus || '—'} />
           <Detail label={t('staff.businessDateLabel')} value={appointment.businessDate || '—'} />
+          {Number(appointment.reward?.hoursUsed ?? 0) > 0 && (
+            <Detail
+              label={t('staff.rewardHoursUsed')}
+              value={`${appointment.reward.hoursUsed} ${t('staff.hours')} (${appointment.reward.minutesUsed} min)`}
+            />
+          )}
+          {appointment.reward?.courtCollectAmount != null && (
+            <Detail
+              label={t('staff.courtCollectionTarget')}
+              value={`${formatEgpWithCurrency(appointment.reward.courtCollectAmount, locale)}${appointment.reward.courtCollectMinutes ? ` · ${t('staff.rewardCourtMinutes', { minutes: appointment.reward.courtCollectMinutes })}` : ''}`}
+            />
+          )}
+          {appointment.reward?.nonRefundable && (
+            <Detail label={t('staff.reward')} value={t('staff.rewardNonRefundable')} />
+          )}
           <Detail label={t('staff.note')} value={appointment.note || '—'} />
         </div>
       </Card>
@@ -194,6 +247,15 @@ export default function AppointmentDetailPage() {
         onClose={() => setPaymentOpen(false)}
         onSuccess={() => {
           setPaymentOpen(false);
+          query.refetch();
+        }}
+      />
+      <ShopSaleModal
+        open={shopSaleOpen}
+        appointment={appointment}
+        onClose={() => setShopSaleOpen(false)}
+        onSuccess={() => {
+          setShopSaleOpen(false);
           query.refetch();
         }}
       />
@@ -234,7 +296,7 @@ function PaymentModal({ open, appointment, locale, onClose, onSuccess }) {
     formState: { errors },
   } = useForm({
     resolver: zodResolver(paymentSchema),
-    defaultValues: { amount: '', method: 'CASH', reference: '', note: '' },
+    defaultValues: { amount: '', method: 'CASH', note: '' },
   });
   const method = watch('method');
   const amountText = watch('amount');
@@ -242,6 +304,12 @@ function PaymentModal({ open, appointment, locale, onClose, onSuccess }) {
   const permissions = useSelector(selectPermissions);
 
   const expected = appointment.payment?.expected ?? 0;
+  const outstanding = Math.max(0, appointment.payment?.due ?? 0);
+  useEffect(() => {
+    if (!open) return;
+    reset({ amount: (outstanding / 100).toFixed(2), method: 'CASH', note: '' });
+    setReceiptId('');
+  }, [open, appointment.id, outstanding, reset]);
   const alreadyCollected = appointment.payment?.collected ?? 0;
   let amountPiasters = 0;
   try {
@@ -265,7 +333,6 @@ function PaymentModal({ open, appointment, locale, onClose, onSuccess }) {
         method: values.method,
         amount,
         ...(receiptId ? { receiptId } : {}),
-        ...(values.reference ? { reference: values.reference } : {}),
         ...(values.note?.trim() ? { note: values.note.trim() } : {}),
       }).unwrap();
       clientRequest.regenerate();
@@ -319,11 +386,6 @@ function PaymentModal({ open, appointment, locale, onClose, onSuccess }) {
 
         {method !== 'CASH' && (
           <>
-            <Input
-              label={t('staff.reference')}
-              placeholder={t('staff.referencePlaceholder')}
-              {...register('reference')}
-            />
             <ReceiptCapture
               value={receiptId}
               onUploaded={setReceiptId}

@@ -10,13 +10,6 @@ import LoginPage from './features/auth/LoginPage';
 import ProfilePage from './features/profile/ProfilePage';
 import AppShell from './shared/layout/AppShell';
 import { NotFound, Unauthorized } from './shared/ui/NotFound';
-import AppointmentsPage from './features/staff/AppointmentsPage';
-import AppointmentDetailPage from './features/staff/AppointmentDetailPage';
-import QuickAddPage from './features/staff/QuickAddPage';
-import StaffExpensesPage from './features/staff/ExpensesPage';
-import HandoverPage from './features/staff/HandoverPage';
-import CloseShiftPage from './features/staff/CloseShiftPage';
-import RecordsPage from './features/staff/RecordsPage';
 import NotificationsPage from './features/staff/NotificationsPage';
 import StaffHomePage from './features/staff/StaffHomePage';
 import AccountantDashboardPage from './features/accountant/AccountantDashboardPage';
@@ -53,6 +46,11 @@ function SessionBootstrap() {
   return null;
 }
 
+function NotificationsRoute() {
+  const role = useSelector(selectRole);
+  return role === 'STAFF' ? <Navigate to="/app/staff" replace /> : <NotificationsPage />;
+}
+
 function RoleHomeRedirect() {
   const role = useSelector(selectRole);
   if (role === 'STAFF') return <Navigate to="/app/staff" replace />;
@@ -73,19 +71,11 @@ export default function App() {
             <Route path="/app" element={<RoleHomeRedirect />} />
             <Route path="/app/profile" element={<ProfilePage />} />
             <Route path="/app/unauthorized" element={<Unauthorized />} />
-            <Route path="/app/notifications" element={<NotificationsPage />} />
+            <Route path="/app/notifications" element={<NotificationsRoute />} />
 
             <Route element={<RoleRoute roles={['STAFF']} />}>
               <Route path="/app/staff" element={<StaffHomePage />} />
-              <Route path="/app/staff/appointments" element={<AppointmentsPage />} />
-              <Route path="/app/staff/appointments/:id" element={<AppointmentDetailPage />} />
-              <Route path="/app/staff/quick-add" element={<QuickAddPage />} />
-              <Route path="/app/staff/expenses" element={<StaffExpensesPage />} />
-              <Route path="/app/staff/records" element={<RecordsPage />} />
-              <Route path="/app/staff/payment-flags" element={<PaymentFlagsPage />} />
-              <Route path="/app/staff/handover" element={<HandoverPage />} />
-              <Route path="/app/staff/shifts/:id/close" element={<CloseShiftPage />} />
-              <Route path="/app/staff/notifications" element={<NotificationsPage />} />
+              <Route path="/app/staff/*" element={<Navigate to="/app/staff" replace />} />
             </Route>
 
             <Route element={<RoleRoute roles={['ACCOUNTANT', 'OWNER']} />}>

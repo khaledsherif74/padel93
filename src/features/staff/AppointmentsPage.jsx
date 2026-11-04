@@ -1,11 +1,10 @@
 import { AlertCircle, CalendarDays, Filter, RotateCcw, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useGetAppointmentsQuery, useGetSettingsQuery } from '../../app/api';
-import { selectPermissions } from '../auth/authSelectors';
 import { businessDate, formatTime } from '../../shared/lib/date';
+import { formatEgpWithCurrency } from '../../shared/lib/money';
 import { errorMessage } from '../../shared/lib/apiError';
 import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
@@ -17,8 +16,6 @@ import Skeleton from '../../shared/ui/Skeleton';
 
 export default function AppointmentsPage() {
   const { t, i18n } = useTranslation();
-  const permissions = useSelector(selectPermissions);
-  const canViewOtherDays = permissions?.['appointment.viewOtherDays'] !== false;
   const { data: settings } = useGetSettingsQuery();
   const closeTime = settings?.closeTime || '04:00';
   const today = businessDate(undefined, closeTime);
@@ -63,9 +60,6 @@ export default function AppointmentsPage() {
             <input
               type="date"
               value={date}
-              min={canViewOtherDays ? undefined : today}
-              max={canViewOtherDays ? undefined : today}
-              disabled={!canViewOtherDays}
               onChange={(event) => setDate(event.target.value)}
               className="min-h-12 w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15 disabled:cursor-not-allowed disabled:bg-navy/5 disabled:text-navy/40"
             />
@@ -145,9 +139,15 @@ export default function AppointmentsPage() {
 
 function AppointmentRow({ appointment, locale, t }) {
   const badge = paymentBadge(appointment.payment?.state, t);
+  const paid =
+    ['PAID', 'OVERPAID'].includes(appointment.payment?.state) ||
+    appointment.payment?.expected === 0;
+  const rewardHours = Number(appointment.reward?.hoursUsed ?? 0);
   return (
     <Link to={`/app/staff/appointments/${appointment.id}`} className="group block">
-      <Card className="p-4 transition group-hover:border-edge/30 group-hover:shadow-md sm:p-5">
+      <Card
+        className={`p-4 transition group-hover:border-edge/30 group-hover:shadow-md sm:p-5 ${paid ? 'border-emerald-200 bg-emerald-50/70 group-hover:bg-emerald-50' : ''}`}
+      >
         <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -155,6 +155,9 @@ function AppointmentRow({ appointment, locale, t }) {
                 {appointment.customer?.name || t('staff.walkIn')}
               </h2>
               <Badge tone={badge.tone}>{badge.label}</Badge>
+              {rewardHours > 0 && (
+                <Badge tone="info">{t('staff.rewardHoursBadge', { hours: rewardHours })}</Badge>
+              )}
               {appointment.payment?.needsAttention && (
                 <Badge tone="warning">{t('staff.attention')}</Badge>
               )}
@@ -172,13 +175,20 @@ function AppointmentRow({ appointment, locale, t }) {
             {appointment.customer?.phone && (
               <p className="mt-2 font-tajawal text-xs text-navy/45">{appointment.customer.phone}</p>
             )}
+            {appointment.reward?.nonRefundable && (
+              <p className="mt-2 font-tajawal text-xs text-amber-800">
+                {t('staff.rewardNonRefundable')}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-4 border-t border-navy/7 pt-3 sm:min-w-44 sm:border-0 sm:pt-0 sm:text-end">
             <div>
               <p className="font-cairo text-xs font-semibold text-navy/45">{t('staff.due')}</p>
               <p className="mt-1 font-cairo text-lg font-black">
-                {(appointment.payment?.due / 100).toFixed(2)} EGP
+                {appointment.payment?.due == null
+                  ? '—'
+                  : formatEgpWithCurrency(appointment.payment.due, locale)}
               </p>
             </div>
             <Search className="size-5 text-edge" aria-hidden="true" />

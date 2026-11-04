@@ -27,7 +27,6 @@ const STAFF_KEYS = [
   'transfer.create',
   'transfer.cancel',
   'appointment.seeCustomerPhone',
-  'appointment.viewOtherDays',
   'goal.view',
 ];
 
@@ -54,6 +53,9 @@ const ACTION_KEYS = [
   'user.update',
   'user.reset_password',
   'user.revoke_sessions',
+  'staff_date_access.request',
+  'staff_date_access.approved',
+  'staff_date_access.rejected',
 ];
 
 export default function OwnerControlCenterPage() {

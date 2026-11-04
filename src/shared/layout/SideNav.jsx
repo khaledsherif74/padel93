@@ -16,7 +16,7 @@ import {
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { selectPermissions, selectRole } from '../../features/auth/authSelectors';
+import { selectRole } from '../../features/auth/authSelectors';
 
 const ownerLinks = [
   { to: '/app/owner', key: 'owner.navDashboard', icon: Home, end: true },
@@ -48,19 +48,12 @@ const accountantLinks = [
 
 const staffLinks = [
   { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-  { to: '/app/staff/appointments', key: 'nav.appointments', icon: CalendarDays },
-  { to: '/app/staff/quick-add', key: 'nav.quickAdd', icon: ReceiptText },
-  { to: '/app/staff/expenses', key: 'nav.expenses', icon: ReceiptText },
-  { to: '/app/staff/handover', key: 'nav.handover', icon: Send, permission: 'transfer.create' },
-  { to: '/app/staff/records', key: 'nav.records', icon: BarChart3 },
-  { to: '/app/staff/payment-flags', key: 'owner.paymentFlags', icon: AlertTriangle },
   { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
 ];
 
 export default function SideNav() {
   const { t } = useTranslation();
   const role = useSelector(selectRole);
-  const permissions = useSelector(selectPermissions);
   const links =
     role === 'OWNER' ? ownerLinks : role === 'ACCOUNTANT' ? accountantLinks : staffLinks;
 
@@ -75,10 +68,9 @@ export default function SideNav() {
               : t('shell.operations')}
         </p>
 
-        {links.map(({ to, key, icon: Icon, end, permission }) => {
-          if (permission && !permissions?.[permission]) return null;
-          return <NavItem key={to} to={to} label={t(key)} icon={Icon} end={end} />;
-        })}
+        {links.map(({ to, key, icon: Icon, end }) => (
+          <NavItem key={to} to={to} label={t(key)} icon={Icon} end={end} />
+        ))}
       </div>
     </aside>
   );

@@ -4,12 +4,18 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useCreateIncomeMutation } from '../../app/api';
+import {
+  useCreateIncomeMutation,
+  useGetAppointmentsQuery,
+  useGetSettingsQuery,
+} from '../../app/api';
 import { errorMessage } from '../../shared/lib/apiError';
 import { selectPermissions } from '../auth/authSelectors';
 import { useClientRequestId } from '../../shared/lib/clientRequestId';
-import { toPiasters } from '../../shared/lib/money';
+import { businessDate, formatTime } from '../../shared/lib/date';
+import { toPiasters, formatEgpWithCurrency } from '../../shared/lib/money';
 import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
 import Button from '../../shared/ui/Button';
@@ -18,6 +24,7 @@ import MoneyInput from '../../shared/ui/MoneyInput';
 import Select from '../../shared/ui/Select';
 import Badge from '../../shared/ui/Badge';
 import ReceiptCapture from '../../shared/ui/ReceiptCapture';
+import Skeleton from '../../shared/ui/Skeleton';
 
 const schema = z.object({
   method: z.enum(['CASH', 'VISA', 'INSTAPAY']),
@@ -25,17 +32,30 @@ const schema = z.object({
     .string()
     .trim()
     .regex(/^\d+(\.\d{1,2})?$/),
-  reference: z.string().trim().max(64).optional(),
   note: z.string().trim().min(3).max(500),
 });
 
 export default function QuickAddPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const [receiptId, setReceiptId] = useState('');
   const [saved, setSaved] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [source, setSource] = useState(() =>
+    searchParams.get('source') === 'SHOP' ? 'SHOP' : 'OTHER',
+  );
+  const [saleDate, setSaleDate] = useState('');
+  const [appointmentId, setAppointmentId] = useState('');
   const permissions = useSelector(selectPermissions);
   const clientRequest = useClientRequestId();
   const [createIncome, state] = useCreateIncomeMutation();
+  const { data: settings } = useGetSettingsQuery();
+  const today = businessDate(undefined, settings?.closeTime || '04:00');
+  const selectedSaleDate = saleDate || today;
+  const appointments = useGetAppointmentsQuery(
+    { date: selectedSaleDate },
+    { skip: source !== 'SHOP', refetchOnMountOrArgChange: true },
+  );
 
   const {
     register,
@@ -45,7 +65,7 @@ export default function QuickAddPage() {
     formState: { errors },
   } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { method: 'CASH', amount: '', reference: '', note: '' },
+    defaultValues: { method: 'CASH', amount: '', note: '' },
   });
   const method = watch('method');
 
@@ -66,17 +86,18 @@ export default function QuickAddPage() {
     try {
       await createIncome({
         clientRequestId: clientRequest.id,
-        source: 'OTHER',
+        source,
+        ...(source === 'SHOP' && appointmentId ? { appointmentId } : {}),
         method: values.method,
         amount,
         ...(receiptId ? { receiptId } : {}),
-        ...(values.reference ? { reference: values.reference } : {}),
         note: values.note,
       }).unwrap();
 
       clientRequest.regenerate();
       reset();
       setReceiptId('');
+      setAppointmentId('');
       setSaved(true);
     } catch {
       // Error rendered below.
@@ -106,15 +127,71 @@ export default function QuickAddPage() {
 
       <Card className="p-5 sm:p-7">
         <form className="space-y-5" onSubmit={handleSubmit(submit)}>
+          <Select
+            label={t('staff.movementType')}
+            value={source}
+            onChange={(event) => {
+              setSource(event.target.value);
+              setAppointmentId('');
+            }}
+            options={[
+              { value: 'SHOP', label: t('source.SHOP') },
+              { value: 'OTHER', label: t('source.OTHER') },
+            ]}
+          />
+
           <div className="flex items-center gap-3 rounded-xl bg-navy/[0.03] p-4">
             <div className="flex size-10 items-center justify-center rounded-full border border-ball text-ball">
               <CircleDollarSign className="size-5" strokeWidth={1.8} aria-hidden="true" />
             </div>
             <div>
-              <p className="font-cairo text-sm font-bold text-navy">{t('source.OTHER')}</p>
-              <p className="mt-0.5 font-tajawal text-xs text-navy/55">{t('source.OTHER_HINT')}</p>
+              <p className="font-cairo text-sm font-bold text-navy">{t(`source.${source}`)}</p>
+              <p className="mt-0.5 font-tajawal text-xs text-navy/55">
+                {source === 'SHOP' ? t('staff.shopSaleHint') : t('source.OTHER_HINT')}
+              </p>
             </div>
           </div>
+
+          {source === 'SHOP' && (
+            <div className="space-y-4 rounded-xl border border-navy/10 p-4">
+              <label className="block">
+                <span className="mb-2 block font-cairo text-sm font-semibold">
+                  {t('staff.saleDate')}
+                </span>
+                <input
+                  type="date"
+                  value={selectedSaleDate}
+                  onChange={(event) => {
+                    setSaleDate(event.target.value);
+                    setAppointmentId('');
+                  }}
+                  className="min-h-12 w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
+                />
+              </label>
+
+              <Select
+                label={t('staff.linkToBooking')}
+                value={appointmentId}
+                onChange={(event) => setAppointmentId(event.target.value)}
+                options={[
+                  { value: '', label: t('staff.standaloneSale') },
+                  ...(appointments.data?.items ?? []).map((appointment) => ({
+                    value: appointment.id,
+                    label: `${appointment.customer?.name || t('staff.walkIn')} · ${appointment.court?.name || t('staff.court')} · ${formatTime(appointment.startsAt, locale)}–${formatTime(appointment.endsAt, locale)}`,
+                  })),
+                ]}
+              />
+              {appointments.isLoading && <Skeleton className="h-10" />}
+              {appointments.isError && (
+                <p className="font-tajawal text-xs text-red-700" role="alert">
+                  {errorMessage(appointments.error, t)}
+                </p>
+              )}
+              <p className="font-tajawal text-xs leading-6 text-navy/55">
+                {t('staff.shopSaleLinkHint')}
+              </p>
+            </div>
+          )}
 
           <MoneyInput
             label={t('common.amount')}
@@ -139,11 +216,6 @@ export default function QuickAddPage() {
 
           {method !== 'CASH' && (
             <>
-              <Input
-                label={t('staff.reference')}
-                placeholder={t('staff.referencePlaceholder')}
-                {...register('reference')}
-              />
               <ReceiptCapture
                 value={receiptId}
                 onUploaded={setReceiptId}
@@ -158,7 +230,11 @@ export default function QuickAddPage() {
 
           <Input
             label={t('staff.description')}
-            placeholder={t('staff.descriptionPlaceholder')}
+            placeholder={
+              source === 'SHOP'
+                ? t('staff.shopSaleDescriptionPlaceholder')
+                : t('staff.descriptionPlaceholder')
+            }
             error={errors.note ? t('errors.noteRequired') : undefined}
             {...register('note')}
           />
@@ -196,7 +272,9 @@ export default function QuickAddPage() {
             type="submit"
             className="w-full"
             loading={state.isLoading}
-            disabled={method !== 'CASH' && !receiptId}
+            disabled={
+              (method !== 'CASH' && !receiptId) || (source === 'SHOP' && appointments.isLoading)
+            }
           >
             {t('staff.savePayment')}
           </Button>
