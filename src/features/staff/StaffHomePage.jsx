@@ -350,14 +350,14 @@ export default function StaffHomePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pt-1 pb-4">
-      {financial.isError && (
+      {showShiftFinancialOverview && financial.isError && (
         <ErrorState
           title={t('staff.financialDataUnavailable')}
           description={errorMessage(financial.error, t)}
           onRetry={financial.refetch}
         />
       )}
-      {financial.isSuccess && !financialDataConsistent && (
+      {showShiftFinancialOverview && financial.isSuccess && !financialDataConsistent && (
         <ErrorState
           title={t('staff.financialDataOutOfSync')}
           description={t('staff.financialDataOutOfSyncHint')}
