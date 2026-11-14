@@ -467,7 +467,7 @@ export default function StaffHomePage() {
               <option value="">{t('common.all')}</option>
               {(courtOptions.data?.items ?? []).map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.id}
+                  {item.name}
                 </option>
               ))}
             </select>
