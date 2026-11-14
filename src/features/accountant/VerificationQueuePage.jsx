@@ -1,7 +1,12 @@
 import { Check, FileImage, RefreshCw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useGetIncomesQuery, useGetReceiptFileQuery, useVerifyIncomeMutation } from '../../app/api';
+import {
+  useGetIncomesQuery,
+  useGetReceiptFileQuery,
+  useVerifyIncomeBatchMutation,
+  useVerifyIncomeMutation,
+} from '../../app/api';
 import { formatDateTime } from '../../shared/lib/date';
 import { formatEgpWithCurrency } from '../../shared/lib/money';
 import { errorMessage } from '../../shared/lib/apiError';
@@ -19,6 +24,30 @@ export default function VerificationQueuePage() {
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const query = useGetIncomesQuery({ verification: 'PENDING', limit: 50 });
   const [selectedId, setSelectedId] = useState(null);
+  const [checked, setChecked] = useState(() => new Set());
+  const [confirmBatch, batch] = useVerifyIncomeBatchMutation();
+  const [skippedCount, setSkippedCount] = useState(0);
+  const items = query.data?.items ?? [];
+  const checkedIds = items.filter((item) => checked.has(item.id)).map((item) => item.id);
+  const allChecked = items.length > 0 && checkedIds.length === items.length;
+  const toggle = (id) =>
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  async function confirmSelected() {
+    if (checkedIds.length === 0) return;
+    try {
+      const result = await confirmBatch({ ids: checkedIds }).unwrap();
+      setSkippedCount(result.skipped.length);
+      setChecked(new Set());
+    } catch {
+      // The mutation error is shown above the list.
+    }
+  }
 
   const selected = useMemo(
     () => query.data?.items?.find((item) => item.id === selectedId) ?? null,
@@ -59,38 +88,75 @@ export default function VerificationQueuePage() {
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(380px,1.05fr)]">
           <div className="space-y-3">
-            {query.data.items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedId(item.id)}
-                className={`w-full rounded-2xl border p-4 text-start outline-none transition ${selectedId === item.id ? 'border-edge bg-court/[0.035] shadow-card' : 'border-navy/10 bg-white hover:border-edge/35'}`}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="warning">{t('verification.PENDING')}</Badge>
-                      <span className="font-cairo text-sm font-bold text-navy">
-                        {t(`method.${item.method}`)}
-                      </span>
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-navy/[0.04] px-4 py-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 font-cairo text-sm font-bold text-navy">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={() =>
+                    setChecked(allChecked ? new Set() : new Set(items.map((item) => item.id)))
+                  }
+                  className="size-5 accent-[var(--ball)]"
+                />
+                {t('accountant.selectAll')}
+              </label>
+              <Button onClick={confirmSelected} loading={batch.isLoading} disabled={checkedIds.length === 0}>
+                <Check className="size-4" aria-hidden="true" />
+                {t('accountant.confirmSelected', { count: checkedIds.length })}
+              </Button>
+            </div>
+            {batch.error && (
+              <p className="font-tajawal text-sm text-red-700" role="alert">
+                {errorMessage(batch.error, t)}
+              </p>
+            )}
+            {skippedCount > 0 && (
+              <p className="font-tajawal text-sm text-amber-800">
+                {t('accountant.bulkSkipped', { count: skippedCount })}
+              </p>
+            )}
+            {items.map((item) => (
+              <div key={item.id} className="flex items-stretch gap-2">
+                <label className="flex w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-navy/10 bg-white">
+                  <input
+                    type="checkbox"
+                    checked={checked.has(item.id)}
+                    onChange={() => toggle(item.id)}
+                    className="size-5 accent-[var(--ball)]"
+                    aria-label={t('accountant.selectPayment')}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(item.id)}
+                  className={`min-w-0 flex-1 rounded-2xl border p-4 text-start outline-none transition ${selectedId === item.id ? 'border-edge bg-court/[0.035] shadow-card' : 'border-navy/10 bg-white hover:border-edge/35'}`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone="warning">{t('verification.PENDING')}</Badge>
+                        <span className="font-cairo text-sm font-bold text-navy">
+                          {t(`method.${item.method}`)}
+                        </span>
+                      </div>
+                      <p className="mt-2 truncate font-tajawal text-sm text-navy/65">
+                        {item.recordedBy?.name ?? t('common.unavailable')}
+                      </p>
+                      <p className="mt-1 font-tajawal text-xs text-navy/45">
+                        {formatDateTime(item.recordedAt, locale)}
+                      </p>
                     </div>
-                    <p className="mt-2 truncate font-tajawal text-sm text-navy/65">
-                      {item.recordedBy?.name ?? t('common.unavailable')}
-                    </p>
-                    <p className="mt-1 font-tajawal text-xs text-navy/45">
-                      {formatDateTime(item.recordedAt, locale)}
-                    </p>
+                    <div className="text-end">
+                      <p className="font-cairo text-lg font-black text-navy">
+                        {formatEgpWithCurrency(item.amount, locale)}
+                      </p>
+                      <p className="mt-1 font-tajawal text-xs text-navy/45">
+                        {item.reference || '—'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-end">
-                    <p className="font-cairo text-lg font-black text-navy">
-                      {formatEgpWithCurrency(item.amount, locale)}
-                    </p>
-                    <p className="mt-1 font-tajawal text-xs text-navy/45">
-                      {item.reference || '—'}
-                    </p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
 

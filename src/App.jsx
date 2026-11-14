@@ -11,6 +11,13 @@ import ProfilePage from './features/profile/ProfilePage';
 import AppShell from './shared/layout/AppShell';
 import { NotFound, Unauthorized } from './shared/ui/NotFound';
 import NotificationsPage from './features/staff/NotificationsPage';
+import FinanceSubLayout from './features/accountant/FinanceSubLayout';
+import DateAccessRequestsPage from './features/accountant/DateAccessRequestsPage';
+import RequestsInboxPage from './features/accountant/RequestsInboxPage';
+import StaffBoardPage from './features/accountant/StaffBoardPage';
+import StaffHistoryPage from './features/accountant/StaffHistoryPage';
+import TeamPage from './features/accountant/TeamPage';
+import HandoverPage from './features/staff/HandoverPage';
 import StaffHomePage from './features/staff/StaffHomePage';
 import AccountantDashboardPage from './features/accountant/AccountantDashboardPage';
 import VerificationQueuePage from './features/accountant/VerificationQueuePage';
@@ -28,21 +35,22 @@ import OwnerCorrectionsPage from './features/owner/OwnerCorrectionsPage';
 import OwnerBookingsPage from './features/owner/OwnerBookingsPage';
 import OwnerBookingDetailPage from './features/owner/OwnerBookingDetailPage';
 import PaymentFlagsPage from './features/paymentFlags/PaymentFlagsPage';
+import HubPage from './features/hub/HubPage';
+import AttendancePage from './features/attendance/AttendancePage';
+import AttendanceBoardPage from './features/attendance/AttendanceBoardPage';
+import SchedulePage from './features/schedule/SchedulePage';
 
 function SessionBootstrap() {
   const dispatch = useDispatch();
   const auth = useSelector(selectAuth);
   const hasToken = Boolean(auth.token);
   const query = useGetMeQuery(undefined, { skip: !hasToken });
-
   useEffect(() => {
     if (!hasToken) dispatch(authInitialized());
   }, [dispatch, hasToken]);
-
   useEffect(() => {
     if (hasToken && (query.isSuccess || query.isError)) dispatch(authInitialized());
   }, [dispatch, hasToken, query.isSuccess, query.isError]);
-
   return null;
 }
 
@@ -51,47 +59,75 @@ function NotificationsRoute() {
   return role === 'STAFF' ? <Navigate to="/app/staff" replace /> : <NotificationsPage />;
 }
 
-function RoleHomeRedirect() {
+// R13: STAFF visiting /app or /app/hub goes straight to /app/staff
+function AppIndexRedirect() {
+  const role = useSelector(selectRole);
+  return role === 'STAFF' ? (
+    <Navigate to="/app/staff" replace />
+  ) : (
+    <Navigate to="/app/hub" replace />
+  );
+}
+
+function HubRoute() {
   const role = useSelector(selectRole);
   if (role === 'STAFF') return <Navigate to="/app/staff" replace />;
-  if (role === 'ACCOUNTANT') return <Navigate to="/app/accountant" replace />;
-  return <Navigate to="/app/owner" replace />;
+  return <HubPage />;
+}
+
+// R13: block STAFF from non-finance routes
+function StaffBlocked({ to = '/app/staff' }) {
+  return <Navigate to={to} replace />;
 }
 
 export default function App() {
   return (
     <>
       <SessionBootstrap />
-
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
-            <Route path="/app" element={<RoleHomeRedirect />} />
-            <Route path="/app/profile" element={<ProfilePage />} />
+            <Route path="/app" element={<AppIndexRedirect />} />
+            <Route path="/app/hub" element={<HubRoute />} />
             <Route path="/app/unauthorized" element={<Unauthorized />} />
             <Route path="/app/notifications" element={<NotificationsRoute />} />
 
             <Route element={<RoleRoute roles={['STAFF']} />}>
               <Route path="/app/staff" element={<StaffHomePage />} />
+              <Route path="/app/staff/handover" element={<HandoverPage />} />
               <Route path="/app/staff/*" element={<Navigate to="/app/staff" replace />} />
+              {/* R13: STAFF cannot open attendance/schedule in the app */}
+              <Route path="/app/attendance" element={<StaffBlocked />} />
+              <Route path="/app/schedule" element={<StaffBlocked />} />
             </Route>
 
             <Route element={<RoleRoute roles={['ACCOUNTANT', 'OWNER']} />}>
               <Route path="/app/accountant" element={<AccountantDashboardPage />} />
-              <Route path="/app/accountant/verification" element={<VerificationQueuePage />} />
-              <Route path="/app/accountant/handovers" element={<HandoverInboxPage />} />
-              <Route path="/app/accountant/shifts" element={<AccountantShiftsPage />} />
-              <Route path="/app/accountant/reports" element={<ReportsPage />} />
-              <Route path="/app/accountant/bookly" element={<BooklyPage />} />
+              <Route element={<FinanceSubLayout />}>
+                <Route path="/app/accountant/verification" element={<VerificationQueuePage />} />
+                <Route path="/app/accountant/handovers" element={<HandoverInboxPage />} />
+                <Route path="/app/accountant/shifts" element={<AccountantShiftsPage />} />
+                <Route path="/app/accountant/reports" element={<ReportsPage />} />
+                <Route path="/app/accountant/bookly" element={<BooklyPage />} />
+                <Route path="/app/accountant/requests" element={<DateAccessRequestsPage />} />
+                <Route path="/app/accountant/inbox" element={<RequestsInboxPage />} />
+                <Route path="/app/accountant/staff" element={<StaffBoardPage />} />
+                <Route path="/app/accountant/staff/:id" element={<StaffHistoryPage />} />
+                <Route path="/app/accountant/team" element={<TeamPage />} />
+                <Route path="/app/accountant/attendance" element={<AttendanceBoardPage />} />
+                <Route path="/app/accountant/schedule" element={<SchedulePage />} />
+              </Route>
             </Route>
 
             <Route element={<RoleRoute roles={['ACCOUNTANT']} />}>
-              <Route path="/app/accountant/expenses" element={<AccountantExpensesPage />} />
+              <Route element={<FinanceSubLayout />}>
+                <Route path="/app/accountant/expenses" element={<AccountantExpensesPage />} />
+              </Route>
             </Route>
 
             <Route element={<RoleRoute roles={['OWNER']} />}>
+              <Route path="/app/profile" element={<ProfilePage />} />
               <Route path="/app/owner" element={<OwnerDashboardPage />} />
               <Route path="/app/owner/inbox" element={<OwnerInboxPage />} />
               <Route path="/app/owner/bookings" element={<OwnerBookingsPage />} />
@@ -104,7 +140,6 @@ export default function App() {
             </Route>
           </Route>
         </Route>
-
         <Route path="/" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

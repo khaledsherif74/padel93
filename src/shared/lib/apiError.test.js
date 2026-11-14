@@ -3,6 +3,17 @@ import { errorMessage, getApiError, getValidationMessages } from './apiError';
 
 const t = (key, values) => `${key}${values ? `:${JSON.stringify(values)}` : ''}`;
 
+describe('attendance errors', () => {
+  const err = (code, details) => ({ status: 422, data: { error: { code, message: 'server text', details } } });
+  it('uses the translated text for attendance codes and passes the numbers along', () => {
+    expect(errorMessage(err('OUT_OF_RANGE', { distanceM: 240, radiusM: 100 }), t)).toBe('attendance.errors.OUT_OF_RANGE:{"distanceM":240,"radiusM":100}');
+    expect(errorMessage(err('ALREADY_CLOCKED_IN'), t)).toBe('attendance.errors.ALREADY_CLOCKED_IN');
+  });
+  it('unknown codes still fall back to the server message', () => {
+    expect(errorMessage(err('SOMETHING_NEW'), t)).toBe('server text');
+  });
+});
+
 describe('API error helpers', () => {
   it('reads the backend error envelope', () => {
     expect(getApiError({

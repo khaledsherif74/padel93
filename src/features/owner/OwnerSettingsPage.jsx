@@ -2,6 +2,8 @@ import {
   Check,
   FolderCog,
   Goal,
+  LayoutGrid,
+  MapPin,
   Plus,
   Save,
   Settings2,
@@ -21,6 +23,8 @@ import {
   useUpdateExpenseCategoryMutation,
 } from '../../app/api';
 import { currentMonth } from '../../shared/lib/date';
+import { geoErrorKey, getCurrentPosition } from '../../shared/lib/geo';
+import { validateHubUrl } from '../hub/hubTile';
 import { errorMessage } from '../../shared/lib/apiError';
 import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
@@ -46,8 +50,29 @@ export default function OwnerSettingsPage() {
     courts: 2,
     countedBookingStatuses: ['APPROVED', 'DONE'],
   });
-  const [shifts, setShifts] = useState({ allowConcurrentShifts: false, staffBackdateDays: 1 });
+  const [shifts, setShifts] = useState({
+    allowConcurrentShifts: false,
+    staffBackdateDays: 1,
+    staffViewDays: 3,
+  });
   const [approvals, setApprovals] = useState({ expenseApprovalThreshold: 0 });
+  const [hub, setHub] = useState({
+    hubLoyaltyUrl: '',
+    hubBotPanelUrl: '',
+    hubBotRemindersUrl: '',
+    hubShowComingSoon: false,
+  });
+  const [attendance, setAttendance] = useState({
+    attendanceLat: '',
+    attendanceLng: '',
+    attendanceRadiusM: '100',
+    attendanceMaxAccuracyM: '50',
+    selfieRetentionDays: '90',
+    missedClockOutHours: '14',
+    offlineMaxAgeHours: '12',
+  });
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState(null);
   const [goalHours, setGoalHours] = useState('0');
   const [newCategory, setNewCategory] = useState({ name: '', nameAr: '' });
   const [editingCategory, setEditingCategory] = useState(null);
@@ -63,9 +88,25 @@ export default function OwnerSettingsPage() {
     setShifts({
       allowConcurrentShifts: Boolean(settings.data.allowConcurrentShifts),
       staffBackdateDays: settings.data.staffBackdateDays ?? 1,
+      staffViewDays: settings.data.staffViewDays ?? 3,
     });
     setApprovals({
       expenseApprovalThreshold: settings.data.expenseApprovalThreshold ?? 0,
+    });
+    setAttendance({
+      attendanceLat: settings.data.attendanceLat == null ? '' : String(settings.data.attendanceLat),
+      attendanceLng: settings.data.attendanceLng == null ? '' : String(settings.data.attendanceLng),
+      attendanceRadiusM: String(settings.data.attendanceRadiusM ?? 100),
+      attendanceMaxAccuracyM: String(settings.data.attendanceMaxAccuracyM ?? 50),
+      selfieRetentionDays: String(settings.data.selfieRetentionDays ?? 90),
+      missedClockOutHours: String(settings.data.missedClockOutHours ?? 14),
+      offlineMaxAgeHours: String(settings.data.offlineMaxAgeHours ?? 12),
+    });
+    setHub({
+      hubLoyaltyUrl: settings.data.hubLoyaltyUrl ?? '',
+      hubBotPanelUrl: settings.data.hubBotPanelUrl ?? '',
+      hubBotRemindersUrl: settings.data.hubBotRemindersUrl ?? '',
+      hubShowComingSoon: Boolean(settings.data.hubShowComingSoon),
     });
   }, [settings.data]);
 
@@ -92,6 +133,70 @@ export default function OwnerSettingsPage() {
   async function saveApprovals() {
     await updateSettings({
       expenseApprovalThreshold: Number(approvals.expenseApprovalThreshold || 0),
+    }).unwrap();
+  }
+
+  const inRange = (value, min, max, integer = true) => {
+    const n = Number(value);
+    return (
+      value !== '' &&
+      Number.isFinite(n) &&
+      n >= min &&
+      n <= max &&
+      (!integer || Number.isInteger(n))
+    );
+  };
+  const coordsBlank = attendance.attendanceLat === '' && attendance.attendanceLng === '';
+  const attendanceValid =
+    (coordsBlank ||
+      (inRange(attendance.attendanceLat, -90, 90, false) &&
+        inRange(attendance.attendanceLng, -180, 180, false))) &&
+    inRange(attendance.attendanceRadiusM, 20, 1000) &&
+    inRange(attendance.attendanceMaxAccuracyM, 10, 500) &&
+    inRange(attendance.selfieRetentionDays, 7, 3650) &&
+    inRange(attendance.missedClockOutHours, 4, 48) &&
+    inRange(attendance.offlineMaxAgeHours, 1, 48);
+
+  async function saveAttendance() {
+    if (!attendanceValid) return;
+    await updateSettings({
+      attendanceLat: coordsBlank ? null : Number(attendance.attendanceLat),
+      attendanceLng: coordsBlank ? null : Number(attendance.attendanceLng),
+      attendanceRadiusM: Number(attendance.attendanceRadiusM),
+      attendanceMaxAccuracyM: Number(attendance.attendanceMaxAccuracyM),
+      selfieRetentionDays: Number(attendance.selfieRetentionDays),
+      missedClockOutHours: Number(attendance.missedClockOutHours),
+      offlineMaxAgeHours: Number(attendance.offlineMaxAgeHours),
+    }).unwrap();
+  }
+
+  async function useMyLocation() {
+    setLocating(true);
+    setLocationError(null);
+    try {
+      const pos = await getCurrentPosition();
+      setAttendance((v) => ({
+        ...v,
+        attendanceLat: String(pos.lat),
+        attendanceLng: String(pos.lng),
+      }));
+    } catch (err) {
+      setLocationError(t(geoErrorKey(err)));
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  const hubUrlKeys = ['hubLoyaltyUrl', 'hubBotPanelUrl', 'hubBotRemindersUrl'];
+  const hubInvalid = hubUrlKeys.some((key) => validateHubUrl(hub[key]) !== null);
+
+  async function saveHub() {
+    if (hubInvalid) return;
+    await updateSettings({
+      hubLoyaltyUrl: hub.hubLoyaltyUrl.trim(),
+      hubBotPanelUrl: hub.hubBotPanelUrl.trim(),
+      hubBotRemindersUrl: hub.hubBotRemindersUrl.trim(),
+      hubShowComingSoon: hub.hubShowComingSoon,
     }).unwrap();
   }
 
@@ -217,6 +322,16 @@ export default function OwnerSettingsPage() {
             }
             hint={t('owner.staffBackdateHint')}
           />
+          <Input
+            label={t('owner.staffViewDays')}
+            type="number"
+            min="0"
+            max="30"
+            inputMode="numeric"
+            value={shifts.staffViewDays}
+            onChange={(e) => setShifts((v) => ({ ...v, staffViewDays: Number(e.target.value) }))}
+            hint={t('owner.staffViewDaysHint')}
+          />
           <label className="flex min-h-12 items-center gap-3 self-end rounded-xl border border-navy/10 bg-white px-4 py-3 font-cairo text-sm font-semibold text-navy">
             <input
               type="checkbox"
@@ -252,6 +367,141 @@ export default function OwnerSettingsPage() {
       </SettingsCard>
 
       <SettingsCard
+        icon={MapPin}
+        title={t('attendance.settingsTitle')}
+        description={t('attendance.settingsHint')}
+        saving={saving}
+        onSave={attendanceValid && settings.data ? saveAttendance : null}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p
+            className={`sm:col-span-2 rounded-xl p-3 font-tajawal text-sm ${settings.data?.attendanceLat == null ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`}
+            role="status"
+          >
+            {settings.data?.attendanceLat == null
+              ? t('attendance.courtNotSet')
+              : t('attendance.courtSet')}
+          </p>
+          <Input
+            label={t('attendance.lat')}
+            type="number"
+            step="any"
+            inputMode="decimal"
+            dir="ltr"
+            value={attendance.attendanceLat}
+            onChange={(e) => setAttendance((v) => ({ ...v, attendanceLat: e.target.value }))}
+          />
+          <Input
+            label={t('attendance.lng')}
+            type="number"
+            step="any"
+            inputMode="decimal"
+            dir="ltr"
+            value={attendance.attendanceLng}
+            onChange={(e) => setAttendance((v) => ({ ...v, attendanceLng: e.target.value }))}
+          />
+          <div className="sm:col-span-2">
+            <Button variant="ghost" loading={locating} onClick={useMyLocation}>
+              <MapPin className="size-4" aria-hidden="true" />
+              {t('attendance.useMyLocation')}
+            </Button>
+            {locationError && (
+              <p className="mt-2 font-tajawal text-sm text-red-700" role="alert">
+                {locationError}
+              </p>
+            )}
+          </div>
+          <Input
+            label={t('attendance.radius')}
+            type="number"
+            min="20"
+            max="1000"
+            inputMode="numeric"
+            value={attendance.attendanceRadiusM}
+            onChange={(e) => setAttendance((v) => ({ ...v, attendanceRadiusM: e.target.value }))}
+          />
+          <Input
+            label={t('attendance.accuracy')}
+            type="number"
+            min="10"
+            max="500"
+            inputMode="numeric"
+            value={attendance.attendanceMaxAccuracyM}
+            onChange={(e) =>
+              setAttendance((v) => ({ ...v, attendanceMaxAccuracyM: e.target.value }))
+            }
+          />
+          <Input
+            label={t('attendance.retention')}
+            type="number"
+            min="7"
+            max="3650"
+            inputMode="numeric"
+            value={attendance.selfieRetentionDays}
+            onChange={(e) => setAttendance((v) => ({ ...v, selfieRetentionDays: e.target.value }))}
+          />
+          <Input
+            label={t('attendance.missedHours')}
+            type="number"
+            min="4"
+            max="48"
+            inputMode="numeric"
+            value={attendance.missedClockOutHours}
+            onChange={(e) => setAttendance((v) => ({ ...v, missedClockOutHours: e.target.value }))}
+          />
+          <Input
+            label={t('attendance.offlineHours')}
+            type="number"
+            min="1"
+            max="48"
+            inputMode="numeric"
+            value={attendance.offlineMaxAgeHours}
+            onChange={(e) => setAttendance((v) => ({ ...v, offlineMaxAgeHours: e.target.value }))}
+          />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        icon={LayoutGrid}
+        title={t('hub.settingsTitle')}
+        description={t('hub.settingsDescription')}
+        saving={saving}
+        onSave={hubInvalid || !settings.data ? null : saveHub}
+      >
+        <div className="grid gap-4">
+          {[
+            ['hubLoyaltyUrl', 'hub.loyaltyUrl'],
+            ['hubBotPanelUrl', 'hub.botPanelUrl'],
+            ['hubBotRemindersUrl', 'hub.botRemindersUrl'],
+          ].map(([key, labelKey]) => (
+            <Input
+              key={key}
+              label={t(labelKey)}
+              type="url"
+              inputMode="url"
+              dir="ltr"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="https://"
+              value={hub[key]}
+              onChange={(e) => setHub((v) => ({ ...v, [key]: e.target.value }))}
+              error={validateHubUrl(hub[key]) ? t('hub.urlInvalid') : undefined}
+              hint={t('hub.urlHint')}
+            />
+          ))}
+          <label className="flex min-h-12 items-center gap-3 rounded-xl border border-navy/10 bg-white px-4 py-3 font-cairo text-sm font-semibold text-navy">
+            <input
+              type="checkbox"
+              checked={hub.hubShowComingSoon}
+              onChange={(e) => setHub((v) => ({ ...v, hubShowComingSoon: e.target.checked }))}
+              className="size-4 accent-[var(--ball)]"
+            />
+            {t('hub.showComingSoon')}
+          </label>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
         icon={Goal}
         title={t('owner.goalSettingsTitle')}
         description={t('owner.goalSettingsDescription')}
@@ -269,7 +519,6 @@ export default function OwnerSettingsPage() {
           />
           <Badge tone="info">{month}</Badge>
         </div>
-        {/* API returns { goalHours, goalMinutes, ... }; there is no plain `goal` field. */}
         {goal.data?.goalHours != null && (
           <p className="mt-4 font-tajawal text-sm text-navy/55">
             {t('owner.currentGoalValue', { value: goal.data.goalHours ?? 0 })}

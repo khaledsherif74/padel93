@@ -7,6 +7,7 @@ import { errorMessage } from '../../shared/lib/apiError';
 import Modal from '../../shared/ui/Modal';
 import Button from '../../shared/ui/Button';
 import ReceiptCapture from '../../shared/ui/ReceiptCapture';
+import MethodRadios from '../../shared/ui/MethodRadios';
 
 export default function StaffExpenseModal({ open, onClose, onSuccess }) {
   const { t, i18n } = useTranslation();
@@ -80,14 +81,10 @@ export default function StaffExpenseModal({ open, onClose, onSuccess }) {
           <span className="mb-2 block font-cairo text-sm font-semibold text-navy">{t('common.amount', { defaultValue: 'Amount' })}</span>
           <input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required placeholder="0.00" className="min-h-12 w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy" />
         </label>
-        <label className="block">
+        <div>
           <span className="mb-2 block font-cairo text-sm font-semibold text-navy">{t('common.method', { defaultValue: 'Payment method' })}</span>
-          <select value={method} onChange={(event) => setMethod(event.target.value)} className="min-h-12 w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy">
-            <option value="CASH">{t('method.CASH', { defaultValue: 'Cash' })}</option>
-            <option value="VISA">{t('method.VISA', { defaultValue: 'Visa' })}</option>
-            <option value="INSTAPAY">{t('method.INSTAPAY', { defaultValue: 'InstaPay' })}</option>
-          </select>
-        </label>
+          <MethodRadios name="expense-method" value={method} onChange={setMethod} methods={['CASH', 'VISA', 'INSTAPAY']} t={t} />
+        </div>
         <label className="block">
           <span className="mb-2 block font-cairo text-sm font-semibold text-navy">{t('staff.description', { defaultValue: 'Description' })}</span>
           <textarea value={description} onChange={(event) => setDescription(event.target.value)} minLength={3} maxLength={200} required rows={3} placeholder={t('staff.expenseDescriptionPlaceholder', { defaultValue: 'Describe what the expense was for' })} className="w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-sm text-navy" />

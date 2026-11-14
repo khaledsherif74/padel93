@@ -15,7 +15,6 @@ class AppErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Keep technical details in the browser console only. The UI shows a safe, localized message.
     console.error('PADEL 93 render error', error, info);
   }
 

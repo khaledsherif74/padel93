@@ -1,7 +1,11 @@
 import { Bell, CheckCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useGetNotificationsQuery, useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation } from '../../app/api';
+import {
+  useGetNotificationsQuery,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+} from '../../app/api';
 import { formatDateTime } from '../../shared/lib/date';
 import { errorMessage } from '../../shared/lib/apiError';
 import PageHeader from '../../shared/ui/PageHeader';
@@ -15,7 +19,11 @@ export default function NotificationsPage() {
   const { t, i18n } = useTranslation();
   const [cursor, setCursor] = useState();
   const [items, setItems] = useState([]);
-  const query = useGetNotificationsQuery({ unread: 'true', limit: 30, ...(cursor ? { cursor } : {}) });
+  const query = useGetNotificationsQuery({
+    unread: 'true',
+    limit: 30,
+    ...(cursor ? { cursor } : {}),
+  });
   const [markRead] = useMarkNotificationReadMutation();
   const [markAll, allState] = useMarkAllNotificationsReadMutation();
 
@@ -30,17 +38,28 @@ export default function NotificationsPage() {
     });
   }, [query.data, cursor]);
 
-  // The bell is designed for the latest unread items; this page focuses on the same feed.
   if (query.isLoading && !cursor) {
-    return <div className="mx-auto max-w-4xl space-y-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-28" />)}</div>;
+    return (
+      <div className="mx-auto max-w-4xl space-y-3">
+        {[1, 2, 3].map((item) => (
+          <Skeleton key={item} className="h-28" />
+        ))}
+      </div>
+    );
   }
 
   if (query.isError && !cursor) {
-    return <ErrorState title={t('errors.generic')} description={errorMessage(query.error, t)} onRetry={query.refetch} />;
+    return (
+      <ErrorState
+        title={t('errors.generic')}
+        description={errorMessage(query.error, t)}
+        onRetry={query.refetch}
+      />
+    );
   }
 
-  const currentItems = cursor ? items : query.data?.items ?? [];
-  const merged = cursor ? items : query.data?.items ?? items;
+  const currentItems = cursor ? items : (query.data?.items ?? []);
+  const merged = cursor ? items : (query.data?.items ?? items);
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
 
   async function read(id) {
@@ -71,7 +90,12 @@ export default function NotificationsPage() {
         title={t('notifications.title')}
         description={t('notifications.pageDescription')}
         actions={
-          <Button variant="ghost" onClick={readAll} loading={allState.isLoading} disabled={!rows.length}>
+          <Button
+            variant="ghost"
+            onClick={readAll}
+            loading={allState.isLoading}
+            disabled={!rows.length}
+          >
             <CheckCheck className="size-4" aria-hidden="true" />
             {t('notifications.markAll')}
           </Button>
@@ -91,7 +115,9 @@ export default function NotificationsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="font-cairo text-base font-bold">{item.title}</h2>
-                    <span className="font-tajawal text-[11px] text-navy/40">{formatDateTime(item.createdAt, locale)}</span>
+                    <span className="font-tajawal text-[11px] text-navy/40">
+                      {formatDateTime(item.createdAt, locale)}
+                    </span>
                   </div>
                   <p className="mt-2 font-tajawal text-sm leading-7 text-navy/65">{item.body}</p>
                   <Button variant="ghost" className="mt-2 px-0" onClick={() => read(item.id)}>
@@ -106,7 +132,11 @@ export default function NotificationsPage() {
 
       {query.data?.nextCursor && (
         <div className="flex justify-center">
-          <Button variant="ghost" loading={query.isFetching} onClick={() => setCursor(query.data.nextCursor)}>
+          <Button
+            variant="ghost"
+            loading={query.isFetching}
+            onClick={() => setCursor(query.data.nextCursor)}
+          >
             {t('common.loadMore')}
           </Button>
         </div>

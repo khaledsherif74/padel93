@@ -20,14 +20,12 @@ const rawBaseQuery = fetchBaseQuery({
 
 const baseQueryWithAuth = async (args, api, extraOptions) => {
   const result = await rawBaseQuery(args, api, extraOptions);
-
   if (result.error?.status === 401 && result.error?.data?.error?.code === 'UNAUTHENTICATED') {
     api.dispatch(authLoggedOut());
     if (window.location.pathname !== '/login') {
       window.location.assign('/login?reason=session');
     }
   }
-
   return result;
 };
 
@@ -54,6 +52,10 @@ export const api = createApi({
     'PaymentFlag',
     'ClosingSummary',
     'StaffDateAccess',
+    'Hub',
+    'Attendance',
+    'Schedule',
+    'Payroll',
   ],
   endpoints: (builder) => ({
     login: builder.mutation({
@@ -68,7 +70,7 @@ export const api = createApi({
           const { data } = await queryFulfilled;
           dispatch(authSet(data));
         } catch {
-          // LoginPage renders the mutation error.
+          /* LoginPage renders the mutation error. */
         }
       },
       invalidatesTags: ['Auth'],
@@ -89,7 +91,7 @@ export const api = createApi({
           );
           dispatch(authPermissionsUpdated(data.permissions ?? {}));
         } catch {
-          // Global baseQuery handles 401.
+          /* Global baseQuery handles 401. */
         }
       },
     }),
@@ -101,7 +103,7 @@ export const api = createApi({
           const { data } = await queryFulfilled;
           if (data?.token) dispatch(authTokenReplaced(data.token));
         } catch {
-          // Form renders the mutation error.
+          /* Form renders the mutation error. */
         }
       },
       invalidatesTags: ['Auth'],
@@ -122,12 +124,33 @@ export const api = createApi({
             }),
           );
         } catch {
-          // Form renders mutation error.
+          /* Form renders mutation error. */
         }
       },
     }),
 
     getUsers: builder.query({ query: () => '/users', providesTags: ['Users'] }),
+    getStaffUsers: builder.query({ query: () => '/users/staff', providesTags: ['Users'] }),
+    getFinanceStaffBoard: builder.query({
+      query: (date) => ({ url: '/finance/staff', params: date ? { date } : undefined }),
+      providesTags: ['Dashboard', 'Income', 'Transfer', 'Shift'],
+    }),
+    getFinanceStaffHistory: builder.query({
+      query: (id) => `/finance/staff/${id}/history`,
+      providesTags: ['Income', 'Transfer', 'Shift'],
+    }),
+    getFinanceEdits: builder.query({
+      query: (date) => ({ url: '/finance/edits', params: date ? { date } : undefined }),
+      providesTags: ['Income'],
+    }),
+    verifyIncomeBatch: builder.mutation({
+      query: ({ ids }) => ({
+        url: '/incomes/verify-batch',
+        method: 'POST',
+        body: { ids, decision: 'VERIFIED' },
+      }),
+      invalidatesTags: ['Income', 'Dashboard', 'Report'],
+    }),
     createUser: builder.mutation({
       query: (body) => ({ url: '/users', method: 'POST', body }),
       invalidatesTags: ['Users', 'Audit'],
@@ -155,7 +178,7 @@ export const api = createApi({
 
     updateSettings: builder.mutation({
       query: (body) => ({ url: '/settings', method: 'PUT', body }),
-      invalidatesTags: ['Settings', 'Dashboard', 'Goal'],
+      invalidatesTags: ['Settings', 'Dashboard', 'Goal', 'Hub'],
     }),
     getPermissions: builder.query({
       query: () => '/settings/permissions',
@@ -201,6 +224,64 @@ export const api = createApi({
     }),
 
     getSettings: builder.query({ query: () => '/settings', providesTags: ['Settings'] }),
+    getHub: builder.query({ query: () => '/hub', providesTags: ['Hub'] }),
+
+    getAttendanceMe: builder.query({ query: () => '/attendance/me', providesTags: ['Attendance'] }),
+    getMySchedule: builder.query({ query: () => '/schedule/me', providesTags: ['Schedule'] }),
+    uploadAttendancePhoto: builder.mutation({
+      query: (formData) => ({ url: '/attendance/photos', method: 'POST', body: formData }),
+    }),
+    attendanceClock: builder.mutation({
+      query: ({ action, body }) => ({ url: `/attendance/${action}`, method: 'POST', body }),
+      invalidatesTags: ['Attendance'],
+    }),
+    getAttendanceBoard: builder.query({
+      query: (date) => ({ url: '/attendance/board', params: date ? { date } : {} }),
+      providesTags: ['Attendance'],
+    }),
+    getAttendanceRecords: builder.query({
+      query: (params) => ({ url: '/attendance/records', params }),
+      providesTags: ['Attendance'],
+    }),
+    adjustAttendance: builder.mutation({
+      query: ({ id, body }) => ({ url: `/attendance/records/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['Attendance'],
+    }),
+    getAttendancePhoto: builder.query({
+      query: (id) => ({
+        url: `/attendance/photos/${id}/file`,
+        responseHandler: (response) => response.blob(),
+      }),
+    }),
+    getSchedule: builder.query({
+      query: ({ from, days = 7 }) => ({ url: '/schedule', params: { from, days } }),
+      providesTags: ['Schedule'],
+    }),
+    createShift: builder.mutation({
+      query: (body) => ({ url: '/schedule/shifts', method: 'POST', body }),
+      invalidatesTags: ['Schedule'],
+    }),
+    updateShift: builder.mutation({
+      query: ({ id, body }) => ({ url: `/schedule/shifts/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['Schedule'],
+    }),
+    deleteShift: builder.mutation({
+      query: (id) => ({ url: `/schedule/shifts/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Schedule'],
+    }),
+    publishSchedule: builder.mutation({
+      query: (body) => ({ url: '/schedule/publish', method: 'POST', body }),
+      invalidatesTags: ['Schedule'],
+    }),
+    copyScheduleWeek: builder.mutation({
+      query: (body) => ({ url: '/schedule/copy-week', method: 'POST', body }),
+      invalidatesTags: ['Schedule'],
+    }),
+    getPayrollRules: builder.query({ query: () => '/payroll/rules', providesTags: ['Payroll'] }),
+    updatePayrollRules: builder.mutation({
+      query: (body) => ({ url: '/payroll/rules', method: 'PUT', body }),
+      invalidatesTags: ['Payroll'],
+    }),
 
     getDashboardBalances: builder.query({
       query: () => '/dashboard/balances',
@@ -277,6 +358,34 @@ export const api = createApi({
         'ClosingSummary',
       ],
     }),
+    createIncomeBatch: builder.mutation({
+      query: (body) => ({ url: '/incomes/batch', method: 'POST', body }),
+      invalidatesTags: [
+        'Income',
+        'Appointment',
+        'Shift',
+        'PaymentFlag',
+        'Notification',
+        'Dashboard',
+        'Report',
+        'Audit',
+        'ClosingSummary',
+      ],
+    }),
+    updateIncome: builder.mutation({
+      query: ({ id, body }) => ({ url: `/incomes/${id}`, method: 'PATCH', body }),
+      invalidatesTags: [
+        'Income',
+        'Appointment',
+        'Shift',
+        'PaymentFlag',
+        'Notification',
+        'Dashboard',
+        'Report',
+        'Audit',
+        'ClosingSummary',
+      ],
+    }),
     getIncomes: builder.query({
       query: (params) => ({ url: '/incomes', params }),
       providesTags: ['Income'],
@@ -301,6 +410,10 @@ export const api = createApi({
     }),
     getTransfers: builder.query({
       query: (params) => ({ url: '/transfers', params }),
+      providesTags: ['Transfer'],
+    }),
+    getTransferReceivers: builder.query({
+      query: () => '/transfers/receivers',
       providesTags: ['Transfer'],
     }),
     cancelTransfer: builder.mutation({
@@ -343,7 +456,11 @@ export const api = createApi({
     }),
 
     voidIncome: builder.mutation({
-      query: ({ id, reason }) => ({ url: `/incomes/${id}/void`, method: 'POST', body: { reason } }),
+      query: ({ id, reason }) => ({
+        url: `/incomes/${id}/void`,
+        method: 'POST',
+        body: { reason },
+      }),
       invalidatesTags: [
         'Income',
         'Appointment',
@@ -465,6 +582,7 @@ export const {
   useChangePasswordMutation,
   useUpdateMeMutation,
   useGetSettingsQuery,
+  useGetHubQuery,
   useGetDashboardBalancesQuery,
   useGetDayReportQuery,
   useGetMonthReportQuery,
@@ -477,12 +595,15 @@ export const {
   useGetAppointmentsQuery,
   useGetAppointmentQuery,
   useCreateIncomeMutation,
+  useCreateIncomeBatchMutation,
+  useUpdateIncomeMutation,
   useGetIncomesQuery,
   useCreateExpenseMutation,
   useGetExpensesQuery,
   useGetExpenseCategoriesQuery,
   useCreateTransferMutation,
   useGetTransfersQuery,
+  useGetTransferReceiversQuery,
   useCancelTransferMutation,
   useConfirmTransferMutation,
   useVerifyIncomeMutation,
@@ -496,6 +617,27 @@ export const {
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,
   useGetUsersQuery,
+  useGetStaffUsersQuery,
+  useGetFinanceStaffBoardQuery,
+  useGetFinanceStaffHistoryQuery,
+  useGetFinanceEditsQuery,
+  useGetAttendanceMeQuery,
+  useGetMyScheduleQuery,
+  useUploadAttendancePhotoMutation,
+  useAttendanceClockMutation,
+  useGetAttendanceBoardQuery,
+  useGetAttendanceRecordsQuery,
+  useAdjustAttendanceMutation,
+  useGetAttendancePhotoQuery,
+  useGetScheduleQuery,
+  useCreateShiftMutation,
+  useUpdateShiftMutation,
+  useDeleteShiftMutation,
+  usePublishScheduleMutation,
+  useCopyScheduleWeekMutation,
+  useGetPayrollRulesQuery,
+  useUpdatePayrollRulesMutation,
+  useVerifyIncomeBatchMutation,
   useCreateUserMutation,
   useUpdateUserMutation,
   useResetUserPasswordMutation,

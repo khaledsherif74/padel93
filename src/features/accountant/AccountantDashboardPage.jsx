@@ -1,16 +1,17 @@
-import {
-  ArrowUpRight,
-  Banknote,
-  CircleAlert,
-  ClipboardCheck,
-  Clock3,
-  Landmark,
-  RefreshCw,
-  ShieldCheck,
-} from 'lucide-react';
+import { Banknote, Clock3, Landmark, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { useGetDashboardBalancesQuery, useGetGoalQuery } from '../../app/api';
+import {
+  useGetDashboardBalancesQuery,
+  useGetFinanceEditsQuery,
+  useGetGoalQuery,
+  useGetPendingStaffDateAccessRequestsQuery,
+} from '../../app/api';
+import { selectRole } from '../auth/authSelectors';
+import { getManageTiles } from './financeTiles';
+import Modal from '../../shared/ui/Modal';
 import { currentMonth } from '../../shared/lib/date';
 import { formatEgpWithCurrency } from '../../shared/lib/money';
 import PageHeader from '../../shared/ui/PageHeader';
@@ -20,6 +21,8 @@ import KpiCard from '../../shared/ui/KpiCard';
 import Skeleton from '../../shared/ui/Skeleton';
 import ErrorState from '../../shared/ui/ErrorState';
 import ProgressRing from '../../shared/ui/ProgressRing';
+import StatCard from '../../shared/ui/StatCard';
+import GoalSetter from './GoalSetter';
 
 export default function AccountantDashboardPage() {
   const { t, i18n } = useTranslation();
@@ -27,6 +30,10 @@ export default function AccountantDashboardPage() {
   const month = currentMonth();
   const balances = useGetDashboardBalancesQuery();
   const goal = useGetGoalQuery(month);
+  const role = useSelector(selectRole);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const accessRequests = useGetPendingStaffDateAccessRequestsQuery(undefined, { pollingInterval: 30_000 });
+  const editsToday = useGetFinanceEditsQuery(undefined, { pollingInterval: 30_000 });
 
   if (balances.isLoading) {
     return <DashboardSkeleton t={t} />;
@@ -48,72 +55,134 @@ export default function AccountantDashboardPage() {
   const todo = data.todo ?? {};
   const progress = Number(goal.data?.progress ?? 0);
 
-  const todoItems = [
-    {
-      key: 'unverified',
-      count: todo.unverifiedPayments ?? 0,
-      label: t('accountant.todoUnverified'),
-      to: '/app/accountant/verification',
-      icon: ClipboardCheck,
-    },
-    {
-      key: 'transfers',
-      count: todo.pendingTransfers ?? 0,
-      label: t('accountant.todoTransfers'),
-      to: '/app/accountant/handovers',
-      icon: Banknote,
-    },
-    {
-      key: 'variance',
-      count: todo.shiftsWithVariance ?? 0,
-      label: t('accountant.todoVariance'),
-      to: '/app/accountant/shifts',
-      icon: CircleAlert,
-    },
-    {
-      key: 'bookly',
-      count: todo.unacknowledgedBooklyChanges ?? 0,
-      label: t('accountant.todoBookly'),
-      to: '/app/accountant/bookly',
-      icon: RefreshCw,
-    },
-  ];
+
+  const money = (n) => formatEgpWithCurrency(n ?? 0, locale);
+  const handoverCount = todo.pendingTransfers ?? 0;
+  const accessCount = accessRequests.data?.items?.length ?? 0;
+  const editCount = editsToday.data?.items?.length ?? 0;
+  const requestTotal = handoverCount + accessCount + editCount;
+  const goalPercent = goal.data?.goalHours != null ? `${Math.round(progress * 100)}%` : '—';
+  const tiles = getManageTiles(role);
+  const linkCard = 'block rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-edge';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-8">
       <PageHeader
         eyebrow={t('accountant.eyebrow')}
         title={t('accountant.dashboardTitle')}
         description={t('accountant.dashboardDescription')}
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label={t('accountant.drawerCash')}
-          value={formatEgpWithCurrency(cash.drawer ?? 0, locale)}
-          icon={Banknote}
-          detail={t('accountant.cashLocationDetail')}
-        />
-        <KpiCard
-          label={t('accountant.accountantCash')}
-          value={formatEgpWithCurrency(cash.accountant ?? 0, locale)}
-          icon={Landmark}
-          detail={t('accountant.cashLocationDetail')}
-        />
-        <KpiCard
-          label={t('accountant.inTransit')}
-          value={formatEgpWithCurrency(cash.inTransit ?? 0, locale)}
-          icon={RefreshCw}
-          detail={t('accountant.cashLocationDetail')}
-        />
-        <KpiCard
-          label={t('accountant.disputedGap')}
-          value={formatEgpWithCurrency(cash.disputedGap ?? 0, locale)}
-          icon={CircleAlert}
-          detail={t('accountant.disputedGapDetail')}
-        />
+      <section className="space-y-3" aria-labelledby="finance-attention">
+        <h2 id="finance-attention" className="font-cairo text-lg font-black text-navy">
+          {t('accountant.needsAttention')}
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+          <Link to="/app/accountant/verification" className={linkCard}>
+            <StatCard
+              tone="amber"
+              label={t('accountant.pendingCardVerification')}
+              value={money(todo.unverifiedAmount)}
+              hint={t('accountant.pendingCardVerificationHint', { count: todo.unverifiedPayments ?? 0 })}
+            />
+          </Link>
+          <Link to="/app/accountant/inbox" className={linkCard}>
+            <StatCard
+              tone={requestTotal > 0 ? 'red' : 'navy'}
+              label={t('accountant.requestsCard')}
+              value={requestTotal}
+              hint={t('accountant.requestsCardHint', {
+                handovers: handoverCount,
+                access: accessCount,
+                edits: editCount,
+              })}
+            />
+          </Link>
+          <Link to="/app/accountant/shifts" className={linkCard}>
+            <StatCard
+              tone={(todo.shiftsWithVariance ?? 0) > 0 ? 'red' : 'navy'}
+              label={t('accountant.shiftsAttention')}
+              value={todo.shiftsWithVariance ?? 0}
+              hint={t('accountant.shiftsAttentionHint')}
+            />
+          </Link>
+          <Link to="/app/accountant/handovers" className={linkCard}>
+            <StatCard tone="red" label={t('accountant.disputedGap')} value={money(cash.disputedGap)} />
+          </Link>
+          <Link to="/app/accountant/bookly" className={linkCard}>
+            <StatCard
+              tone={(todo.unacknowledgedBooklyChanges ?? 0) > 0 ? 'amber' : 'navy'}
+              label={t('accountant.booklyChanges')}
+              value={todo.unacknowledgedBooklyChanges ?? 0}
+            />
+          </Link>
+        </div>
       </section>
 
+      <section className="space-y-3" aria-labelledby="finance-money">
+        <h2 id="finance-money" className="font-cairo text-lg font-black text-navy">
+          {t('accountant.moneySection')}
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatCard tone="green" label={t('accountant.accountantCash')} value={money(cash.accountant)} />
+          <Link to="/app/accountant/handovers" className={linkCard}>
+            <StatCard tone="amber" label={t('accountant.inTransit')} value={money(cash.inTransit)} />
+          </Link>
+          <Link to="/app/accountant/staff" className={linkCard}>
+            <StatCard
+              tone="red"
+              label={t('accountant.outstandingFromStaff')}
+              value={money(cash.drawer)}
+              hint={t('accountant.outstandingFromStaffHint')}
+            />
+          </Link>
+          <button
+            type="button"
+            onClick={() => setGoalOpen(true)}
+            className={`${linkCard} text-start`}
+            aria-label={t('accountant.setGoalTitle')}
+          >
+            <StatCard
+              tone="blue"
+              label={t('accountant.monthlyGoal')}
+              value={goalPercent}
+              hint={
+                goal.data?.goalHours != null
+                  ? `${Number(goal.data.goalHours).toFixed(1)} ${t('staff.hours')}`
+                  : t('staff.noGoal')
+              }
+            />
+          </button>
+        </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="finance-manage">
+        <h2 id="finance-manage" className="font-cairo text-lg font-black text-navy">
+          {t('accountant.manageSection')}
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          {tiles.map(({ to, key, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-navy/10 bg-white p-4 text-center shadow-card outline-none transition hover:border-edge/40 focus-visible:ring-2 focus-visible:ring-edge"
+            >
+              <Icon className="size-6 text-navy" aria-hidden="true" />
+              <span className="font-cairo text-sm font-bold text-navy">{t(key)}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <Modal open={goalOpen} onClose={() => setGoalOpen(false)} title={t('accountant.setGoalTitle')}>
+        <GoalSetter month={month} current={goal.data?.goalHours} />
+      </Modal>
+
+      <details className="rounded-2xl border border-navy/10 bg-white p-4">
+        <summary className="cursor-pointer font-cairo text-base font-extrabold text-navy">
+          {t('accountant.moreFigures')}
+        </summary>
+        <div className="mt-6 space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="overflow-hidden p-0">
           <div className="border-b border-navy/10 bg-navy px-5 py-5 text-white sm:px-6">
@@ -208,43 +277,6 @@ export default function AccountantDashboardPage() {
         </Card>
       </section>
 
-      <section>
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <p className="font-cairo text-xs font-bold uppercase tracking-[0.14em] text-ball">
-              {t('accountant.todoEyebrow')}
-            </p>
-            <h2 className="mt-1 font-cairo text-2xl font-black text-navy">
-              {t('accountant.todoTitle')}
-            </h2>
-          </div>
-          {todo.openShifts > 0 && (
-            <Link className="font-cairo text-sm font-bold text-edge" to="/app/accountant/shifts">
-              {t('accountant.openShifts', { count: todo.openShifts })}
-            </Link>
-          )}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {todoItems.map(({ key, count, label, to, icon: Icon }) => (
-            <Link
-              key={key}
-              to={to}
-              className="rounded-2xl border border-navy/10 bg-white p-5 shadow-card outline-none transition hover:-translate-y-0.5 hover:border-edge/35 focus-visible:ring-2 focus-visible:ring-edge"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex size-10 items-center justify-center rounded-full border border-ball text-ball">
-                  <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
-                </div>
-                <ArrowUpRight className="size-4 text-navy/35" aria-hidden="true" />
-              </div>
-              <p className="mt-5 font-cairo text-3xl font-black text-navy">{count}</p>
-              <p className="mt-1 font-tajawal text-sm leading-6 text-navy/60">{label}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
       <section className="grid gap-6 lg:grid-cols-2">
         <Card className="p-6">
           <div className="flex items-center justify-between gap-4">
@@ -292,6 +324,8 @@ export default function AccountantDashboardPage() {
           </p>
         </Card>
       </section>
+        </div>
+      </details>
     </div>
   );
 }

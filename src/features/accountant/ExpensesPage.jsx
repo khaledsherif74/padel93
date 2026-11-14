@@ -18,6 +18,7 @@ import Input from '../../shared/ui/Input';
 import Select from '../../shared/ui/Select';
 import MoneyInput from '../../shared/ui/MoneyInput';
 import ReceiptCapture from '../../shared/ui/ReceiptCapture';
+import MethodRadios from '../../shared/ui/MethodRadios';
 import EmptyState from '../../shared/ui/EmptyState';
 import ErrorState from '../../shared/ui/ErrorState';
 
@@ -116,16 +117,18 @@ export default function ExpensesPage() {
               onChange={(event) => setAmount(event.target.value)}
             />
 
-            <Select
-              label={t('common.method')}
-              value={method}
-              onChange={(event) => setMethod(event.target.value)}
-              options={[
-                { value: 'CASH', label: t('method.CASH') },
-                { value: 'VISA', label: t('method.VISA') },
-                { value: 'INSTAPAY', label: t('method.INSTAPAY') },
-              ]}
-            />
+            <div>
+              <span className="mb-2 block font-cairo text-sm font-semibold text-navy">
+                {t('common.method')}
+              </span>
+              <MethodRadios
+                name="accountant-expense-method"
+                value={method}
+                onChange={setMethod}
+                methods={['CASH', 'VISA', 'INSTAPAY']}
+                t={t}
+              />
+            </div>
 
             <Input
               label={t('staff.description')}

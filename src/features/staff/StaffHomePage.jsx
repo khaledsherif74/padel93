@@ -1,19 +1,16 @@
 import {
   AlertTriangle,
-  ArrowRight,
   Banknote,
-  CalendarDays,
   CheckCircle2,
-  CreditCard,
   Filter,
+  LockKeyhole,
   RotateCcw,
   ShoppingBag,
   ReceiptText,
-  LockKeyhole,
-  Smartphone,
   WalletCards,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import {
@@ -29,38 +26,52 @@ import {
   useCreateStaffDateAccessRequestMutation,
   useOpenShiftMutation,
 } from '../../app/api';
-import { businessDate, formatTime } from '../../shared/lib/date';
-import { selectPermissions } from '../auth/authSelectors';
+import { businessDate, formatTime, addDays } from '../../shared/lib/date';
+import { selectPermissions, selectUser } from '../auth/authSelectors';
 import { errorMessage } from '../../shared/lib/apiError';
 import { useClientRequestId } from '../../shared/lib/clientRequestId';
-import { formatEgpWithCurrency, toPiasters } from '../../shared/lib/money';
-import PageHeader from '../../shared/ui/PageHeader';
+import { formatEgpWithCurrency } from '../../shared/lib/money';
+import { groupBookings } from '../../shared/lib/bookingGroups';
+import { canEditDay, canViewDay } from '../../shared/lib/dayAccess';
+import {
+  getAppointmentPaymentStatus,
+  getClosingRowPaymentStatus,
+  isBookingStarted,
+  paymentStatusStyle,
+  summarizeUnpaid,
+} from '../../shared/lib/paymentStatus';
 import Card from '../../shared/ui/Card';
 import Button from '../../shared/ui/Button';
 import Badge from '../../shared/ui/Badge';
 import Skeleton from '../../shared/ui/Skeleton';
 import EmptyState from '../../shared/ui/EmptyState';
 import ErrorState from '../../shared/ui/ErrorState';
-import MoneyInput from '../../shared/ui/MoneyInput';
 import Modal from '../../shared/ui/Modal';
+import BookingPaymentLines from './BookingPaymentLines';
+import EditPaymentModal from './EditPaymentModal';
+import ReadOnlyDayBanner from './ReadOnlyDayBanner';
 import BookingPaymentModal from './BookingPaymentModal';
 import ShopSaleModal from './ShopSaleModal';
 import StaffExpenseModal from './StaffExpenseModal';
+import BottomDock from './BottomDock';
+import SegmentedDateFilter from './SegmentedDateFilter';
 
 export default function StaffHomePage() {
   const { t, i18n } = useTranslation();
   const permissions = useSelector(selectPermissions);
+  const currentUser = useSelector(selectUser);
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const clientRequest = useClientRequestId();
 
   const { data: settings } = useGetSettingsQuery();
   const today = businessDate(undefined, settings?.closeTime || '04:00');
-  const [date, setDate] = useState('');
+  const [day, setDay] = useState(null);
   const [court, setCourt] = useState('');
+  const [editingIncome, setEditingIncome] = useState(null);
   const [openShiftModal, setOpenShiftModal] = useState(false);
   const [closingOpen, setClosingOpen] = useState(false);
-  const [countedCash, setCountedCash] = useState('');
   const [closeNote, setCloseNote] = useState('');
+  const [closeReason, setCloseReason] = useState('');
   const [closingResult, setClosingResult] = useState(null);
   const [paymentAppointment, setPaymentAppointment] = useState(null);
   const [saleAppointment, setSaleAppointment] = useState(null);
@@ -69,28 +80,33 @@ export default function StaffHomePage() {
   const [requestReason, setRequestReason] = useState('');
   const [requestFormOpen, setRequestFormOpen] = useState(false);
 
-  // Closing is tied to the business date on which the active shift was opened.
-  // Default the dashboard to that same date so the booking list, financial overview,
-  // and closing review start from one consistent business-day scope.
   const shifts = useGetCurrentShiftsQuery(undefined, { pollingInterval: 15_000 });
   const shift = shifts.data?.items?.[0] ?? null;
   const shiftBusinessDate = shift?.businessDate ?? null;
-  const selectedDate = date || shiftBusinessDate || today;
+  const selectedDate = day || shiftBusinessDate || today;
   const accessRequests = useGetMyStaffDateAccessRequestsQuery(undefined, {
     pollingInterval: 15_000,
     refetchOnFocus: true,
   });
   const courtOptions = useGetAppointmentCourtsQuery();
-  const selectedDateRequest = (accessRequests.data?.items ?? []).find(
+  const dayRequests = (accessRequests.data?.items ?? []).filter(
     (item) => item.businessDate === selectedDate,
   );
-  const approvedDateRequest =
-    selectedDateRequest?.status === 'APPROVED' && selectedDateRequest.isActive;
-  const canViewSelectedDate =
-    selectedDate >= today || selectedDate === shiftBusinessDate || Boolean(approvedDateRequest);
-  // Cash/card/shop figures are shift-scoped. When a shift is open, only show
-  // them beside that shift's business day. With no open shift, show today's
-  // booking totals and zero/current-day collection figures only.
+  const isActiveGrant = (item) => item.status === 'APPROVED' && item.isActive;
+  const selectedDateRequest =
+    dayRequests.find((item) => isActiveGrant(item) && (item.kind ?? 'EDIT') === 'EDIT') ??
+    dayRequests.find(isActiveGrant) ??
+    dayRequests[0];
+  const dayAccessInput = {
+    date: selectedDate,
+    today,
+    viewDays: settings?.staffViewDays ?? 3,
+    shiftBusinessDate,
+    request: selectedDateRequest,
+  };
+  const canViewSelectedDate = canViewDay(dayAccessInput);
+  const canEditSelectedDate = canEditDay(dayAccessInput);
+
   const showShiftFinancialOverview = shift
     ? selectedDate === shiftBusinessDate
     : selectedDate === today;
@@ -111,88 +127,76 @@ export default function StaffHomePage() {
   );
   const [openShift, openState] = useOpenShiftMutation();
   const [closeShift, closeState] = useCloseShiftMutation();
-  const canRecordIncome = Boolean(shift) && permissions?.['income.create'] !== false;
+  const canRecordIncome =
+    Boolean(shift) && canEditSelectedDate && permissions?.['income.create'] !== false;
   const closingSummary = useGetShiftClosingSummaryQuery(shift?.id, {
     skip: !closingOpen || !shift?.id || Boolean(closingResult),
     refetchOnMountOrArgChange: true,
   });
   const goalQuery = useGetGoalQuery(undefined, {
-    skip: !closingOpen || !shift?.id || permissions?.['goal.view'] === false,
+    skip: !shift?.id || permissions?.['goal.view'] === false,
     refetchOnMountOrArgChange: true,
   });
 
-  const visibleAppointments = useMemo(() => {
-    const rows = appointments.currentData?.items ?? [];
-    // Historical days require an owner approval grant. On the live business day,
-    // remove a booking only after its scheduled playing time has ended.
-    if (selectedDate !== today) return rows;
-    const now = Date.now();
-    return rows.filter((appointment) => new Date(appointment.endsAt).getTime() > now);
-  }, [appointments.currentData, selectedDate, today]);
+  const bookingGroups = useMemo(
+    () =>
+      groupBookings(appointments.currentData?.items ?? [], {
+        now: Date.now(),
+        isToday: selectedDate === today,
+      }),
+    [appointments.currentData, selectedDate, today],
+  );
+  const hasAnyBooking =
+    bookingGroups.active.length + bookingGroups.paid.length + bookingGroups.cancelled.length > 0;
+
+  const filterItems = useMemo(
+    () => [
+      { id: 'yesterday', label: t('staff.filterYesterday'), date: addDays(today, -1) },
+      { id: 'today', label: t('staff.filterToday'), date: today },
+      { id: 'tomorrow', label: t('staff.filterTomorrow'), date: addDays(today, 1) },
+    ],
+    [t, today],
+  );
+  const activeFilter = filterItems.find((item) => item.date === selectedDate)?.id ?? null;
+  const onFilterChange = (item) => setDay(item.date);
 
   async function submitOpeningFloat(event) {
     event.preventDefault();
-    const value = new FormData(event.currentTarget).get('openingFloat');
-    let amount;
     try {
-      amount = toPiasters(value);
-    } catch {
-      return;
-    }
-    if (!Number.isInteger(amount) || amount < 0) return;
-
-    try {
-      await openShift({ openingFloat: amount, clientRequestId: clientRequest.id }).unwrap();
+      await openShift({ clientRequestId: clientRequest.id }).unwrap();
       clientRequest.regenerate();
       setOpenShiftModal(false);
-      event.currentTarget.reset();
       financial.refetch();
     } catch {
-      // The mutation error is shown in the open-shift modal.
+      /* shown in modal */
     }
   }
 
   function startClosing() {
-    // A shift can remain open across the 04:00 business-day boundary. Before
-    // opening its closing review, return the dashboard to that shift's day.
-    if (shiftBusinessDate && selectedDate !== shiftBusinessDate) {
-      setDate(shiftBusinessDate);
-    }
+    if (shiftBusinessDate && selectedDate !== shiftBusinessDate) setDay(shiftBusinessDate);
     setClosingResult(null);
-    setCountedCash('');
     setCloseNote('');
+    setCloseReason('');
     setClosingOpen(true);
   }
 
   async function submitClose(event) {
     event.preventDefault();
     if (!shift) return;
-    let counted;
     try {
-      counted = toPiasters(countedCash);
-    } catch {
-      return;
-    }
-    if (!Number.isInteger(counted) || counted < 0) return;
-
-    try {
-      const response = await closeShift({
-        id: shift.id,
-        body: {
-          countedCash: counted,
-          ...(closeNote.trim() ? { note: closeNote.trim() } : {}),
-          clientRequestId: clientRequest.id,
-        },
-      }).unwrap();
+      const body = { clientRequestId: clientRequest.id };
+      const note = closeNote.trim();
+      const reason = closeReason.trim();
+      if (note) body.note = note;
+      if (reason) body.closeReason = reason;
+      const response = await closeShift({ id: shift.id, body }).unwrap();
       clientRequest.regenerate();
       setClosingResult(response);
-      // After this shift is closed, let the dashboard fall back to the current
-      // business date instead of pinning the page to the just-closed day.
-      setDate('');
+      setDay(null);
       shifts.refetch();
       financial.refetch();
     } catch {
-      // The mutation error is shown in the closing review.
+      /* shown in modal */
     }
   }
 
@@ -203,12 +207,13 @@ export default function StaffHomePage() {
       await createDateAccessRequest({
         businessDate: selectedDate,
         reason: requestReason.trim(),
+        kind: 'VIEW',
       }).unwrap();
       setRequestReason('');
       setRequestFormOpen(false);
       accessRequests.refetch();
     } catch {
-      // The request state is shown in the access panel.
+      /* shown in access panel */
     }
   }
 
@@ -216,12 +221,10 @@ export default function StaffHomePage() {
     setSaleAppointment(null);
     setSaleOpen(true);
   }
-
   function openLinkedSale(appointment) {
     setSaleAppointment(appointment);
     setSaleOpen(true);
   }
-
   function afterIncomeSaved() {
     setPaymentAppointment(null);
     setSaleAppointment(null);
@@ -235,6 +238,7 @@ export default function StaffHomePage() {
   const financialData = financial.currentData;
   const appointmentItems = appointments.currentData?.items ?? [];
   const hasClosingBookingDetails = Array.isArray(summary?.bookings);
+
   const dashboardPayableBookings = appointmentItems.filter(
     (booking) =>
       !['CANCELLED', 'REJECTED', 'WAITLISTED', 'REMOVED', 'PRICE_MISSING'].includes(
@@ -254,6 +258,7 @@ export default function StaffHomePage() {
       total + Math.max(0, (booking.payment.due ?? 0) - (booking.payment.onAccountOpen ?? 0)),
     0,
   );
+
   const closingCourtBookingCount = (summary?.courts ?? []).reduce(
     (total, courtRow) => total + (courtRow.bookings ?? 0),
     0,
@@ -267,6 +272,7 @@ export default function StaffHomePage() {
     (total, courtRow) => total + Math.max(0, courtRow.expected ?? 0),
     0,
   );
+
   const financialDataContractValid = Boolean(
     financialData &&
     financialData.businessDate === selectedDate &&
@@ -333,386 +339,217 @@ export default function StaffHomePage() {
   );
   const financialLoading = financial.isFetching && !financial.currentData;
   const appointmentsLoading = appointments.isFetching && !appointments.currentData;
-  const noActiveShift = !financialLoading && financialData?.open === false;
-  const shiftAction = (
-    <ShiftAction
-      shift={shift}
-      loading={shifts.isLoading}
-      onOpen={() => setOpenShiftModal(true)}
-      onClose={startClosing}
-      t={t}
-    />
-  );
+
+  const goalData = goalQuery.data ?? null;
+  const goalSummary = useMemo(() => {
+    if (!goalData) return null;
+    const { goalHours, achievedToDateHours, targetToDateHours, deltaHours, onTrack } = goalData;
+    if (goalHours == null || achievedToDateHours == null || targetToDateHours == null) return null;
+    return { goalHours, achievedToDateHours, targetToDateHours, deltaHours, onTrack };
+  }, [goalData]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <PageHeader
-        eyebrow={t('staff.eyebrow')}
-        title={t('staff.homeDashboardTitle')}
-        description={t('staff.homeDashboardDescription')}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setExpenseOpen(true)}
-              disabled={
-                !shift ||
-                selectedDate !== shiftBusinessDate ||
-                permissions?.['expense.create'] === false
-              }
-              title={
-                !shift
-                  ? t('staff.openShiftBeforeRecording', {
-                      defaultValue: 'Open a shift before recording an expense',
-                    })
-                  : selectedDate !== shiftBusinessDate
-                    ? t('staff.expenseOnlyActiveShiftDay', {
-                        defaultValue: 'Expenses can only be recorded against the active shift day.',
-                      })
-                    : undefined
-              }
-            >
-              <ReceiptText className="size-4" aria-hidden="true" />
-              {t('staff.addExpense', { defaultValue: 'Add expense' })}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={openStandaloneSale}
-              disabled={!canRecordIncome || selectedDate !== shiftBusinessDate}
-              title={
-                !shift
-                  ? t('staff.openShiftBeforeRecording')
-                  : selectedDate !== shiftBusinessDate
-                    ? t('staff.shopSaleOnlyActiveShiftDay', {
-                        defaultValue:
-                          'Standalone shop sales are recorded against the active shift day.',
-                      })
-                    : undefined
-              }
-            >
-              <ShoppingBag className="size-4" aria-hidden="true" />
-              {t('staff.addShopSale')}
-            </Button>
-            {shiftAction}
-          </div>
-        }
-      />
-
+    <div className="mx-auto max-w-3xl space-y-4 pt-1 pb-4">
       {financial.isError && (
         <ErrorState
-          title={t('staff.financialDataUnavailable', {
-            defaultValue: 'Financial overview could not be loaded',
-          })}
+          title={t('staff.financialDataUnavailable')}
           description={errorMessage(financial.error, t)}
           onRetry={financial.refetch}
         />
       )}
       {financial.isSuccess && !financialDataConsistent && (
         <ErrorState
-          title={t('staff.financialDataOutOfSync', {
-            defaultValue: 'Financial data does not match the selected business day',
-          })}
-          description={t('staff.financialDataOutOfSyncHint', {
-            defaultValue:
-              'The backend response is missing required totals or returned a different business date. Deploy the matching backend update and reload the dashboard.',
-          })}
+          title={t('staff.financialDataOutOfSync')}
+          description={t('staff.financialDataOutOfSyncHint')}
           onRetry={financial.refetch}
         />
       )}
 
       {canViewSelectedDate && !showShiftFinancialOverview && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 font-tajawal text-sm leading-6 text-blue-950">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-tajawal text-sm leading-6 text-blue-950">
           {t('staff.otherDayFinancialsHint', {
-            defaultValue: `You are viewing bookings for ${selectedDate}. Financial cards are scoped to the active shift day (${shiftBusinessDate ?? today}) and are hidden here to avoid mixing collections with another day's bookings.`,
+            viewDate: selectedDate,
+            shiftDate: shiftBusinessDate ?? today,
           })}
           {shiftBusinessDate && (
-            <Button className="ms-2" variant="ghost" onClick={() => setDate(shiftBusinessDate)}>
-              {t('staff.useActiveShiftDate', { defaultValue: 'Use active shift date' })}
+            <Button className="ms-2" variant="ghost" onClick={() => setDay(shiftBusinessDate)}>
+              {t('staff.useActiveShiftDate')}
             </Button>
           )}
+          {canViewSelectedDate && !canEditSelectedDate && <ReadOnlyDayBanner date={selectedDate} />}
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        <FinancialCard
-          icon={Banknote}
-          label={t('staff.cashInDrawer')}
-          value={
-            financial.isLoading
-              ? null
-              : !financialDataConsistent
-                ? '—'
-                : financialData.cashInDrawer == null
-                  ? financialData.open
-                    ? t('staff.hiddenUntilClose')
-                    : '—'
-                  : money(financialData.cashInDrawer)
-          }
-          hint={
-            financialData?.cashInDrawer == null && financialData?.open
-              ? t('staff.hiddenUntilCloseHint')
-              : t('staff.cashInDrawerHint')
-          }
+      {/* R1: three compact cards (row on mobile, col on desktop) */}
+      <section
+        className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+        aria-label={t('staff.summaryCards')}
+      >
+        <CompactStatCard
+          label={t('staff.todayBalance')}
+          value={financialDataConsistent ? money(financialData.todayBalance ?? 0) : '—'}
           loading={financialLoading}
-        />
-        <FinancialCard
-          icon={CreditCard}
-          label={t('staff.visaPayments')}
-          value={
-            financialLoading ? null : financialDataConsistent ? money(financialData.visa) : '—'
-          }
-          hint={
-            financialDataConsistent && noActiveShift
-              ? t('staff.noActiveShiftHint')
-              : financialDataConsistent
-                ? t('staff.methodPaymentsHint', { pending: money(financialData.visaPending) })
-                : t('staff.financialValuesUnavailable', {
-                    defaultValue: 'Financial values unavailable',
-                  })
-          }
+        >
+          <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 font-tajawal text-[11px] leading-4 text-navy/55">
+            <span>
+              {t('method.CASH')}:{' '}
+              {financialDataConsistent
+                ? money(
+                    (financialData.todayBalance ?? 0) - financialData.visa - financialData.instapay,
+                  )
+                : '—'}
+            </span>
+            <span>
+              {t('method.VISA')}: {financialDataConsistent ? money(financialData.visa) : '—'}
+            </span>
+            <span>
+              {t('method.INSTAPAY')}:{' '}
+              {financialDataConsistent ? money(financialData.instapay) : '—'}
+            </span>
+            <span>
+              {t('staff.shopSales')}:{' '}
+              {financialDataConsistent ? money(financialData.shopSales) : '—'}
+            </span>
+          </div>
+        </CompactStatCard>
+        <CompactStatCard
+          label={t('staff.toBeCollected')}
+          value={financialDataConsistent ? money(financialData.outstanding.amount) : '—'}
           loading={financialLoading}
-        />
-        <FinancialCard
-          icon={Smartphone}
-          label={t('staff.instapayPayments')}
+        >
+          {financialDataConsistent && (
+            <p className="mt-1.5 font-tajawal text-[11px] leading-4 text-navy/55">
+              {t('staff.outstandingPaymentsHint', { count: financialData.outstanding.count })}
+            </p>
+          )}
+        </CompactStatCard>
+        <CompactStatCard
+          label={t('staff.todayGoal')}
           value={
-            financialLoading ? null : financialDataConsistent ? money(financialData.instapay) : '—'
+            !goalSummary
+              ? '—'
+              : goalSummary.onTrack
+                ? `+${goalSummary.deltaHours.toFixed(1)}${t('staff.hoursShort')}`
+                : `${goalSummary.deltaHours.toFixed(1)}${t('staff.hoursShort')}`
           }
-          hint={
-            financialDataConsistent && noActiveShift
-              ? t('staff.noActiveShiftHint')
-              : financialDataConsistent
-                ? t('staff.methodPaymentsHint', { pending: money(financialData.instapayPending) })
-                : t('staff.financialValuesUnavailable', {
-                    defaultValue: 'Financial values unavailable',
-                  })
-          }
-          loading={financialLoading}
-        />
-        <FinancialCard
-          icon={ShoppingBag}
-          label={t('staff.shopSales')}
-          value={
-            financialLoading ? null : financialDataConsistent ? money(financialData.shopSales) : '—'
-          }
-          hint={
-            financialDataConsistent && noActiveShift
-              ? t('staff.noActiveShiftHint')
-              : financialDataConsistent
-                ? t('staff.linkedAndStandaloneSales')
-                : t('staff.financialValuesUnavailable', {
-                    defaultValue: 'Financial values unavailable',
-                  })
-          }
-          loading={financialLoading}
-        />
-        <FinancialCard
-          icon={AlertTriangle}
-          label={t('staff.outstandingPayments')}
-          value={
-            financialLoading
-              ? null
-              : financialDataConsistent
-                ? money(financialData.outstanding.amount)
-                : '—'
-          }
-          hint={
-            financialDataConsistent
-              ? t('staff.outstandingPaymentsHint', { count: financialData.outstanding.count })
-              : t('staff.financialValuesUnavailable', {
-                  defaultValue: 'Financial values unavailable',
-                })
-          }
-          loading={financialLoading}
-          emphasis={Boolean(financialData?.outstanding?.amount)}
-        />
-        <FinancialCard
-          icon={ArrowRight}
-          label={t('staff.totalExpectedRevenue')}
-          value={
-            financialLoading
-              ? null
-              : financialDataConsistent
-                ? money(financialData.totalExpectedRevenue)
-                : '—'
-          }
-          hint={
-            financialDataConsistent
-              ? t('staff.totalExpectedRevenueHint')
-              : t('staff.financialValuesUnavailable', {
-                  defaultValue: 'Financial values unavailable',
-                })
-          }
-          loading={financialLoading}
-        />
+          tone={!goalSummary ? 'navy' : goalSummary.onTrack ? 'green' : 'red'}
+        >
+          {goalSummary && (
+            <p className="mt-1.5 font-tajawal text-[11px] leading-4 text-navy/55">
+              {goalSummary.achievedToDateHours.toFixed(1)} /{' '}
+              {goalSummary.targetToDateHours.toFixed(1)} {t('staff.hoursShort')}
+            </p>
+          )}
+        </CompactStatCard>
       </section>
 
-      <section>
-        <div className="mb-4">
-          <p className="font-cairo text-xs font-bold uppercase tracking-[0.14em] text-ball">
-            {t('staff.todayAppointments')}
-          </p>
-          <h2 className="mt-1 font-cairo text-2xl font-black">{t('staff.bookingList')}</h2>
+      {/* Filters (date, court, reset) on a single line */}
+      <div className="flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2">
+        <div className="min-w-fit flex-1">
+          <SegmentedDateFilter
+            items={filterItems}
+            activeId={activeFilter}
+            onChange={onFilterChange}
+            ariaLabel={t('staff.bookingDateFilter')}
+          />
         </div>
-
-        <Card className="mb-5 p-4 sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 font-cairo text-sm font-semibold">
-                <CalendarDays className="size-4 text-edge" aria-hidden="true" />
-                {t('staff.businessDayLabel')}
-              </span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => setDate(event.target.value)}
-                className="min-h-12 w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 font-cairo text-sm font-semibold">
-                <Filter className="size-4 text-edge" aria-hidden="true" />
-                {t('staff.courtFilter')}
-              </span>
-              <select
-                value={court}
-                onChange={(event) => setCourt(event.target.value)}
-                className="min-h-12 w-full min-w-44 rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-base text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
-              >
-                <option value="">{t('common.all')}</option>
-                {(courtOptions.data?.items ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setDate('');
-                setCourt('');
-              }}
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <label className="flex items-center gap-1 rounded-xl border border-navy/10 bg-white px-2 py-1 font-tajawal text-[10px] text-navy sm:px-3 sm:py-1.5 sm:text-xs">
+            <Filter className="size-3 text-edge sm:size-3.5" aria-hidden="true" />
+            <span className="font-cairo text-[10px] font-semibold sm:text-xs">
+              {t('staff.courtFilter')}
+            </span>
+            <select
+              value={court}
+              onChange={(event) => setCourt(event.target.value)}
+              className="bg-transparent font-tajawal text-[10px] outline-none sm:text-xs"
             >
-              <RotateCcw className="size-4" aria-hidden="true" />
-              {t('common.reset')}
-            </Button>
-          </div>
-        </Card>
-
-        {shiftBusinessDate && selectedDate !== shiftBusinessDate && (
-          <div
-            className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-            role="status"
+              <option value="">{t('common.all')}</option>
+              {(courtOptions.data?.items ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setDay(null);
+              setCourt('');
+            }}
+            className="flex items-center justify-center gap-1 rounded-xl px-2 py-1 font-cairo text-[10px] font-semibold text-navy/60 outline-none hover:bg-navy/5 focus-visible:ring-2 focus-visible:ring-edge sm:px-3 sm:py-1.5 sm:text-xs"
           >
-            <p className="font-tajawal text-sm leading-6 text-amber-900">
-              {t('staff.historicalDateScopeWarning', {
-                viewDate: selectedDate,
-                shiftDate: shiftBusinessDate,
-                defaultValue: `You are viewing ${selectedDate}. Financial closing belongs to the active shift's business day (${shiftBusinessDate}).`,
-              })}
-            </p>
-            <Button variant="ghost" onClick={() => setDate(shiftBusinessDate)}>
-              {t('staff.useActiveShiftDate', { defaultValue: 'Use active shift date' })}
-            </Button>
-          </div>
-        )}
+            <RotateCcw className="size-3 sm:size-3.5" aria-hidden="true" />
+            {t('common.reset')}
+          </button>
+        </div>
+      </div>
 
+      <section>
         {!canViewSelectedDate ? (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
             <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-amber-300 text-amber-800">
-                <LockKeyhole className="size-5" aria-hidden="true" />
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-amber-300 text-amber-800">
+                <LockKeyhole className="size-4" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="font-cairo text-base font-extrabold text-amber-950">
-                  {t('staff.pastDayLocked', { defaultValue: 'This past business day is locked' })}
+                <h3 className="font-cairo text-sm font-extrabold text-amber-950">
+                  {t('staff.pastDayLocked')}
                 </h3>
-                <p className="mt-1 font-tajawal text-sm leading-6 text-amber-900">
-                  {t('staff.pastDayLockedHint', {
-                    defaultValue:
-                      'Past business days require owner approval. Today and future booking schedules remain available.',
-                  })}
+                <p className="mt-1 font-tajawal text-xs leading-5 text-amber-900">
+                  {t('staff.pastDayLockedHint')}
                 </p>
                 {selectedDateRequest?.status === 'PENDING' ? (
-                  <p className="mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 font-cairo text-xs font-bold text-amber-900">
-                    {t('staff.accessRequestPending', {
-                      defaultValue: 'Your request is waiting for the owner.',
-                    })}
+                  <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-cairo text-xs font-bold text-amber-900">
+                    {t('staff.accessRequestPending')}
                   </p>
+                ) : !requestFormOpen ? (
+                  <Button className="mt-2" onClick={() => setRequestFormOpen(true)}>
+                    {t('staff.requestPastDayAccess')}
+                  </Button>
                 ) : (
-                  <>
-                    {selectedDateRequest?.status === 'REJECTED' && (
-                      <p className="mt-3 font-tajawal text-xs text-amber-900">
-                        {t('staff.accessRequestRejected', {
-                          defaultValue:
-                            'Your previous request was declined. You can send a new request with more details.',
-                        })}
+                  <form className="mt-2 space-y-2" onSubmit={submitDateAccessRequest}>
+                    <textarea
+                      value={requestReason}
+                      onChange={(event) => setRequestReason(event.target.value)}
+                      minLength={5}
+                      maxLength={500}
+                      required
+                      rows={2}
+                      className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 font-tajawal text-sm text-navy"
+                      placeholder={t('staff.accessRequestReasonPlaceholder')}
+                    />
+                    {dateAccessRequestState.error && (
+                      <p className="font-tajawal text-sm text-red-700" role="alert">
+                        {errorMessage(dateAccessRequestState.error, t)}
                       </p>
                     )}
-                    {!requestFormOpen ? (
-                      <Button className="mt-4" onClick={() => setRequestFormOpen(true)}>
-                        {t('staff.requestPastDayAccess', {
-                          defaultValue: 'Request access from owner',
-                        })}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="submit"
+                        loading={dateAccessRequestState.isLoading}
+                        disabled={requestReason.trim().length < 5}
+                      >
+                        {t('staff.sendAccessRequest')}
                       </Button>
-                    ) : (
-                      <form className="mt-4 space-y-3" onSubmit={submitDateAccessRequest}>
-                        <label className="block">
-                          <span className="mb-2 block font-cairo text-sm font-semibold text-amber-950">
-                            {t('staff.accessRequestReason', {
-                              defaultValue: 'Why do you need access to this day?',
-                            })}
-                          </span>
-                          <textarea
-                            value={requestReason}
-                            onChange={(event) => setRequestReason(event.target.value)}
-                            minLength={5}
-                            maxLength={500}
-                            required
-                            rows={3}
-                            className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 font-tajawal text-sm text-navy"
-                            placeholder={t('staff.accessRequestReasonPlaceholder', {
-                              defaultValue:
-                                'For example: correct a booking payment or review a missing record.',
-                            })}
-                          />
-                        </label>
-                        {dateAccessRequestState.error && (
-                          <p className="font-tajawal text-sm text-red-700" role="alert">
-                            {errorMessage(dateAccessRequestState.error, t)}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="submit"
-                            loading={dateAccessRequestState.isLoading}
-                            disabled={requestReason.trim().length < 5}
-                          >
-                            {t('staff.sendAccessRequest', { defaultValue: 'Send request' })}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => setRequestFormOpen(false)}
-                            disabled={dateAccessRequestState.isLoading}
-                          >
-                            {t('common.cancel')}
-                          </Button>
-                        </div>
-                      </form>
-                    )}
-                  </>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setRequestFormOpen(false)}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                    </div>
+                  </form>
                 )}
               </div>
             </div>
           </section>
         ) : appointmentsLoading ? (
-          <div className="grid gap-3">
-            {[1, 2, 3, 4].map((item) => (
-              <Skeleton key={item} className="h-32" />
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5, 6].map((item) => (
+              <Skeleton key={item} className="h-20" />
             ))}
           </div>
         ) : appointments.isError ? (
@@ -721,15 +558,15 @@ export default function StaffHomePage() {
             description={errorMessage(appointments.error, t)}
             onRetry={appointments.refetch}
           />
-        ) : visibleAppointments.length === 0 ? (
+        ) : !hasAnyBooking ? (
           <EmptyState
             title={t('staff.noAppointments')}
             description={t('staff.noAppointmentsHint')}
           />
         ) : (
-          <div className="space-y-3">
-            {visibleAppointments.map((appointment) => (
-              <AppointmentRow
+          <div className="space-y-2">
+            {bookingGroups.active.map((appointment) => (
+              <BookingRow
                 key={appointment.id}
                 appointment={appointment}
                 locale={locale}
@@ -737,23 +574,110 @@ export default function StaffHomePage() {
                 canRecordIncome={canRecordIncome}
                 onRecordPayment={() => setPaymentAppointment(appointment)}
                 onRecordSale={() => openLinkedSale(appointment)}
+                userId={currentUser?.id}
+                canEditDay={canEditSelectedDate}
+                onEditIncome={setEditingIncome}
               />
             ))}
+            {bookingGroups.paid.length > 0 && (
+              <details className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-2">
+                <summary className="cursor-pointer font-cairo text-sm font-bold text-emerald-900">
+                  {t('staff.paidBookings', { count: bookingGroups.paid.length })}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {bookingGroups.paid.map((appointment) => (
+                    <BookingRow
+                      key={appointment.id}
+                      appointment={appointment}
+                      locale={locale}
+                      t={t}
+                      canRecordIncome={canRecordIncome}
+                      onRecordPayment={() => setPaymentAppointment(appointment)}
+                      onRecordSale={() => openLinkedSale(appointment)}
+                      userId={currentUser?.id}
+                      canEditDay={canEditSelectedDate}
+                      onEditIncome={setEditingIncome}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
+            {bookingGroups.cancelled.length > 0 && (
+              <details className="rounded-xl border border-navy/10 bg-white p-2">
+                <summary className="cursor-pointer font-cairo text-sm font-bold text-navy/60">
+                  {t('staff.cancelledBookings', { count: bookingGroups.cancelled.length })}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {bookingGroups.cancelled.map((appointment) => (
+                    <BookingRow
+                      key={appointment.id}
+                      appointment={appointment}
+                      locale={locale}
+                      t={t}
+                      canRecordIncome={false}
+                      onRecordPayment={() => {}}
+                      onRecordSale={() => {}}
+                      userId={currentUser?.id}
+                      canEditDay={false}
+                      onEditIncome={() => {}}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
       </section>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-navy/10 bg-navy/[0.025] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div>
-          <h2 className="font-cairo text-base font-extrabold">
-            {shift ? t('staff.readyToCloseShift') : t('staff.shiftNotOpen')}
-          </h2>
-          <p className="mt-1 font-tajawal text-sm text-navy/55">
-            {shift ? t('staff.closeShiftBottomHint') : t('staff.openShiftBottomHint')}
-          </p>
-        </div>
-        {shiftAction}
-      </div>
+      <BottomDock
+        totalBalanceLabel={t('staff.totalBalance')}
+        totalBalanceValue={financialDataConsistent ? money(financialData.totalBalance ?? 0) : '—'}
+        handoverLabel={t('staff.handoverInTransit')}
+        handoverValue={financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'}
+        actions={[
+          {
+            key: shift ? 'close' : 'open',
+            label: shift ? t('staff.closeShift') : t('staff.openShift'),
+            icon: WalletCards,
+            variant: 'primary',
+            onClick: shift ? startClosing : () => setOpenShiftModal(true),
+            disabled: shifts.isLoading,
+          },
+          {
+            key: 'shop',
+            label: t('staff.addShopSale'),
+            icon: ShoppingBag,
+            variant: 'secondary',
+            onClick: openStandaloneSale,
+            disabled: !canRecordIncome || selectedDate !== shiftBusinessDate,
+          },
+          {
+            key: 'expense',
+            label: t('staff.addExpense'),
+            icon: ReceiptText,
+            variant: 'secondary',
+            onClick: () => setExpenseOpen(true),
+            disabled:
+              !shift ||
+              selectedDate !== shiftBusinessDate ||
+              permissions?.['expense.create'] === false,
+          },
+          {
+            key: 'handover',
+            label: t('staff.cashHandover'),
+            icon: Banknote,
+            variant: 'secondary',
+            to: '/app/staff/handover',
+          },
+        ]}
+      />
+
+      <EditPaymentModal
+        income={editingIncome}
+        locale={locale}
+        onClose={() => setEditingIncome(null)}
+        onSaved={() => setEditingIncome(null)}
+      />
 
       <OpenShiftModal
         open={openShiftModal}
@@ -761,6 +685,11 @@ export default function StaffHomePage() {
         onSubmit={submitOpeningFloat}
         state={openState}
         error={openState.error}
+        totalBalance={
+          financialData?.totalBalance != null
+            ? formatEgpWithCurrency(financialData.totalBalance, locale)
+            : null
+        }
       />
 
       <Modal
@@ -790,11 +719,8 @@ export default function StaffHomePage() {
           />
         ) : summary && !hasClosingBookingDetails ? (
           <ErrorState
-            title={t('staff.closingDataOutOfSync', { defaultValue: 'Closing data is incomplete' })}
-            description={t('staff.closingDataOutOfSyncHint', {
-              defaultValue:
-                'The backend response does not include the booking-level closing details expected by this dashboard. Deploy the updated backend files and reload this review.',
-            })}
+            title={t('staff.closingDataOutOfSync')}
+            description={t('staff.closingDataOutOfSyncHint')}
             onRetry={closingSummary.refetch}
           />
         ) : summary && closingDashboardValidationPending ? (
@@ -805,13 +731,8 @@ export default function StaffHomePage() {
           </div>
         ) : summary && closingDashboardValidationUnavailable ? (
           <ErrorState
-            title={t('staff.closingVerificationUnavailable', {
-              defaultValue: 'Dashboard figures could not be verified',
-            })}
-            description={t('staff.closingVerificationUnavailableHint', {
-              defaultValue:
-                'The dashboard booking and financial data for the active shift day could not be loaded. Retry before closing this shift.',
-            })}
+            title={t('staff.closingVerificationUnavailable')}
+            description={t('staff.closingVerificationUnavailableHint')}
             onRetry={() => {
               appointments.refetch();
               financial.refetch();
@@ -820,26 +741,21 @@ export default function StaffHomePage() {
           />
         ) : summary && closingBookingCountMismatch ? (
           <ErrorState
-            title={t('staff.closingBookingCountMismatch', {
-              defaultValue: 'Booking totals do not match',
-            })}
-            description={t('staff.closingBookingCountMismatchHint', {
-              defaultValue:
-                'The booking rows, court totals, payment totals, or dashboard figures do not agree for the active shift business day. Do not close this shift until the figures are consistent.',
-            })}
+            title={t('staff.closingBookingCountMismatch')}
+            description={t('staff.closingBookingCountMismatchHint')}
             onRetry={closingSummary.refetch}
           />
         ) : summary ? (
           <ClosingReview
             summary={summary}
-            goal={goalQuery.data}
-            goalLoading={goalQuery.isLoading}
+            goal={goalData}
             locale={locale}
             t={t}
-            countedCash={countedCash}
-            setCountedCash={setCountedCash}
             note={closeNote}
             setNote={setCloseNote}
+            closeReason={closeReason}
+            setCloseReason={setCloseReason}
+            requiresCloseReason={Boolean(shift?.reopenReason)}
             onSubmit={submitClose}
             state={closeState}
             error={closeState.error}
@@ -882,172 +798,139 @@ export default function StaffHomePage() {
   );
 }
 
-function ShiftAction({ shift, loading, onOpen, onClose, t }) {
-  return shift ? (
-    <Button onClick={onClose} disabled={loading}>
-      <WalletCards className="size-4" aria-hidden="true" />
-      {t('staff.closeShift')}
-    </Button>
-  ) : (
-    <Button variant="secondary" onClick={onOpen} disabled={loading}>
-      <WalletCards className="size-4" aria-hidden="true" />
-      {t('staff.openShift')}
-    </Button>
-  );
-}
+// ---------------------------------------------------------------
+// Staff-only primitives (bigger, readable, but still compact)
+// ---------------------------------------------------------------
 
-function FinancialCard({ icon: Icon, label, value, hint, loading, emphasis = false }) {
+function CompactStatCard({ label, value, tone = 'navy', loading, children }) {
+  const toneClass = {
+    navy: 'border-s-navy',
+    green: 'border-s-emerald-600',
+    red: 'border-s-red-600',
+    amber: 'border-s-amber-500',
+    blue: 'border-s-edge',
+  }[tone];
+
   return (
-    <Card className={`min-w-0 p-4 sm:p-5 ${emphasis ? 'border-amber-200 bg-amber-50/60' : ''}`}>
-      <div className="flex items-center gap-2 text-navy/55">
-        <Icon className="size-4 shrink-0 text-edge" aria-hidden="true" />
-        <p className="truncate font-cairo text-xs font-semibold">{label}</p>
+    <div
+      className={`min-w-0 rounded-xl border border-navy/10 border-s-[4px] bg-white p-2.5 shadow-card sm:rounded-2xl sm:p-3 ${toneClass}`}
+    >
+      <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:justify-start">
+        <p className="font-cairo text-xs font-semibold text-navy/60 sm:order-2 sm:mt-1">{label}</p>
+        {loading ? (
+          <Skeleton className="h-5 w-16 sm:w-24" />
+        ) : (
+          <p className="break-words font-cairo text-sm font-black leading-tight tabular-nums text-navy sm:order-1 sm:text-base">
+            {value ?? '—'}
+          </p>
+        )}
       </div>
-      {loading ? (
-        <Skeleton className="mt-3 h-8 w-28" />
-      ) : (
-        <p className="mt-3 break-words font-cairo text-xl font-black text-navy sm:text-2xl">
-          {value ?? '—'}
-        </p>
-      )}
-      <p className="mt-2 min-h-8 font-tajawal text-xs leading-5 text-navy/50">{hint}</p>
-    </Card>
+      {children && <div className="mt-1.5 w-full">{children}</div>}
+    </div>
   );
 }
 
-function AppointmentRow({
+function BookingRow({
   appointment,
   locale,
   t,
   canRecordIncome,
   onRecordPayment,
   onRecordSale,
+  userId,
+  canEditDay,
+  onEditIncome,
 }) {
-  const state = appointment.payment?.state;
-  const badge = paymentBadge(state, t);
-  const rewardHours = Number(appointment.reward?.hoursUsed ?? 0);
-  const expected = appointment.payment?.expected;
-  const collected = Math.max(0, appointment.payment?.collected ?? 0);
+  const status = getAppointmentPaymentStatus(appointment);
+  const style = paymentStatusStyle(status, { context: 'card' });
   const due = Math.max(0, appointment.payment?.due ?? 0);
-
-  // Preserve the original compact booking-card payment/status behavior.
-  const freeWithNoCollection =
-    due === 0 &&
-    (expected === 0 || (rewardHours > 0 && appointment.reward?.courtCollectAmount === 0));
-  const paid = ['PAID', 'OVERPAID'].includes(state) || freeWithNoCollection;
-  const partiallyPaid = !paid && due > 0 && collected > 0;
-  const cardStatusClass = paid
-    ? 'border-emerald-300'
-    : partiallyPaid
-      ? 'border-amber-300'
-      : 'border-navy/10';
-  const cardBackground = paid ? '#dcfce7' : partiallyPaid ? '#fef3c7' : '#ffffff';
-  const bookingNote = typeof appointment.note === 'string' ? appointment.note.trim() : '';
+  const rewardHours = Number(appointment.reward?.hoursUsed ?? 0);
 
   return (
-    <section
-      className={`rounded-2xl border shadow-card p-4 text-navy transition sm:p-5 ${cardStatusClass}`}
-      style={{ backgroundColor: cardBackground }}
+    <div
+      className={`rounded-xl border px-3 py-2 shadow-card ${style.border}`}
+      style={{ backgroundColor: style.background }}
     >
-      <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-cairo text-lg font-extrabold">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {/* Name first, then Court Name */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate font-cairo text-sm font-bold text-navy">
               {appointment.customer?.name || t('staff.walkIn')}
-            </h3>
-            <Badge tone={badge.tone}>{badge.label}</Badge>
-            {rewardHours > 0 && (
-              <Badge tone="info">{t('staff.rewardHoursBadge', { hours: rewardHours })}</Badge>
-            )}
+            </p>
+            <span
+              className="shrink-0 truncate rounded-md bg-navy/10 px-1.5 py-0.5 font-cairo text-[10px] font-bold text-navy/70 max-w-[120px]"
+              title={appointment.court?.staffName || appointment.court?.name}
+            >
+              {appointment.court?.staffName || appointment.court?.name || ''}
+            </span>
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-tajawal text-sm text-navy/55">
-            <span>{appointment.court?.name || t('staff.court')}</span>
-            <span>{appointment.service || t('staff.padelBooking')}</span>
-            <span>
-              {formatTime(appointment.startsAt, locale)} – {formatTime(appointment.endsAt, locale)}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-tajawal text-[11px] text-navy/60">
+            <span className="tabular-nums">
+              {formatTime(appointment.startsAt, locale)}–{formatTime(appointment.endsAt, locale)}
             </span>
             {appointment.customer?.phone && (
-              <span>
-                {t('staff.phone', { defaultValue: 'Phone' })}: {appointment.customer.phone}
+              <span dir="ltr" className="tabular-nums">
+                {appointment.customer.phone}
+              </span>
+            )}
+            {rewardHours > 0 && (
+              <span className="shrink-0 rounded-md bg-ball/25 px-1 py-0.5 font-cairo text-[9px] font-bold text-navy">
+                {t('staff.rewardHoursBadge', { hours: rewardHours })}
               </span>
             )}
           </div>
-          {appointment.reward?.nonRefundable && (
-            <p className="mt-2 font-tajawal text-xs text-amber-800">
-              {t('staff.rewardNonRefundable')}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-0.5 text-end">
+          {due > 0 && (
+            <p className="font-cairo text-sm font-black tabular-nums text-navy">
+              {formatEgpWithCurrency(due, locale)}
             </p>
           )}
-        </div>
-
-        <div className="flex flex-col gap-3 border-t border-navy/7 pt-3 lg:min-w-64 lg:border-0 lg:pt-0">
-          <div className="flex items-center justify-between gap-5 lg:justify-end">
-            <div className="lg:text-end">
-              <p className="font-cairo text-xs font-semibold text-navy/45">{t('staff.due')}</p>
-              <p className="mt-1 font-cairo text-lg font-black">
-                {formatEgpWithCurrency(due, locale)}
-              </p>
-              {appointment.reward?.courtCollectAmount != null && (
-                <p className="mt-1 font-tajawal text-[11px] text-navy/50">
-                  {t('staff.courtCollectionTarget')}:{' '}
-                  {formatEgpWithCurrency(appointment.reward.courtCollectAmount, locale)}
-                  {appointment.reward.courtCollectMinutes
-                    ? ` · ${t('staff.rewardCourtMinutes', { minutes: appointment.reward.courtCollectMinutes })}`
-                    : ''}
-                </p>
-              )}
-            </div>
-            {paid && <Badge tone="success">{t('payment.PAID')}</Badge>}
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            {due > 0 && (
-              <Button
-                className="min-h-10 px-3 py-2 text-xs"
-                onClick={onRecordPayment}
-                disabled={!canRecordIncome}
-              >
-                <Banknote className="size-4" aria-hidden="true" />
-                {t('staff.recordPayment')}
-              </Button>
-            )}
-            <Button
-              className="min-h-10 px-3 py-2 text-xs"
-              variant="secondary"
-              onClick={onRecordSale}
-              disabled={!canRecordIncome}
-            >
-              <ShoppingBag className="size-4" aria-hidden="true" />
-              {t('staff.addLinkedShopSale')}
-            </Button>
-          </div>
+          <span className="rounded-md bg-navy/5 px-1.5 py-0.5 font-cairo text-[10px] font-bold text-navy/70">
+            {t(`payment.${status}`)}
+          </span>
         </div>
       </div>
-
-      {bookingNote && (
-        <div className="mt-4 rounded-xl border border-navy/10 bg-white/55 p-3">
-          <p className="font-cairo text-xs font-bold text-navy">
-            {t('staff.bookingNotesOnly', { defaultValue: 'Booking notes only' })}
-          </p>
-          <p className="mt-1 whitespace-pre-wrap font-tajawal text-xs leading-6 text-navy/75">
-            {bookingNote}
-          </p>
+      {appointment.note && (
+        <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[11px] font-tajawal text-amber-900 border border-amber-100 truncate">
+          <span className="font-bold mr-1">{t('staff.note') || 'Note'}:</span>
+          {appointment.note}
         </div>
       )}
-    </section>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {due > 0 && (
+          <button
+            type="button"
+            onClick={onRecordPayment}
+            disabled={!canRecordIncome}
+            className="min-h-8 rounded-lg bg-navy px-2.5 py-1 font-cairo text-xs font-bold text-white outline-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ball"
+          >
+            {t('staff.addPayment')}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRecordSale}
+          disabled={!canRecordIncome}
+          className="min-h-8 rounded-lg bg-ball px-2.5 py-1 font-cairo text-xs font-bold text-navy outline-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-navy"
+        >
+          {t('staff.addShopSales')}
+        </button>
+      </div>
+      <BookingPaymentLines
+        incomes={appointment.incomes}
+        userId={userId}
+        canEditDay={canEditDay}
+        locale={locale}
+        t={t}
+        onEdit={onEditIncome}
+      />
+    </div>
   );
 }
 
-function paymentBadge(state, t) {
-  const values = {
-    PAID: { tone: 'success', label: t('payment.PAID') },
-    PARTIAL: { tone: 'warning', label: t('payment.PARTIAL') },
-    UNPAID: { tone: 'danger', label: t('payment.UNPAID') },
-    ON_ACCOUNT: { tone: 'info', label: t('payment.ON_ACCOUNT', { defaultValue: 'On account' }) },
-    OVERPAID: { tone: 'success', label: t('payment.OVERPAID') },
-  };
-  return values[state] || { tone: 'neutral', label: state || t('payment.UNKNOWN') };
-}
-
-function OpenShiftModal({ open, onClose, onSubmit, state, error }) {
+function OpenShiftModal({ open, onClose, onSubmit, state, error, totalBalance }) {
   const { t } = useTranslation();
   return (
     <Modal open={open} onClose={state.isLoading ? undefined : onClose} title={t('staff.openShift')}>
@@ -1058,13 +941,12 @@ function OpenShiftModal({ open, onClose, onSubmit, state, error }) {
             {t('staff.openShiftWarning')}
           </p>
         </div>
-        <MoneyInput
-          name="openingFloat"
-          label={t('staff.openingFloat')}
-          placeholder="0.00"
-          inputMode="decimal"
-          required
-        />
+        {totalBalance != null && (
+          <div className="flex items-center justify-between rounded-xl border border-navy/10 bg-white px-4 py-3">
+            <span className="font-tajawal text-sm text-navy/60">{t('staff.totalBalance')}</span>
+            <span className="font-cairo text-base font-black">{totalBalance}</span>
+          </div>
+        )}
         {error && (
           <p className="font-tajawal text-sm text-red-700" role="alert">
             {errorMessage(error, t)}
@@ -1083,313 +965,244 @@ function OpenShiftModal({ open, onClose, onSubmit, state, error }) {
   );
 }
 
+function UnpaidBanner({ summary, money, t }) {
+  const owed = summary.unpaid > 0;
+  return (
+    <div
+      role={owed ? 'alert' : 'status'}
+      className={`rounded-xl border p-3 ${owed ? 'border-red-300 bg-red-50 text-red-950' : 'border-emerald-300 bg-emerald-50 text-emerald-950'}`}
+    >
+      <p className="font-cairo text-base font-black">
+        {owed
+          ? t('staff.closingUnpaidHeadline', {
+              unpaid: summary.unpaid,
+              total: summary.total,
+              due: money(summary.unpaidDue),
+            })
+          : t('staff.closingAllPaid', { total: summary.total })}
+      </p>
+      {summary.upcoming > 0 && (
+        <p className="mt-1 font-tajawal text-xs opacity-75">
+          {t('staff.closingUpcoming', { count: summary.upcoming })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ClosingReview({
   summary,
   goal,
-  goalLoading,
   locale,
   t,
-  countedCash,
-  setCountedCash,
   note,
   setNote,
+  closeReason,
+  setCloseReason,
+  requiresCloseReason,
   onSubmit,
   state,
   error,
 }) {
-  const money = (amount) => formatEgpWithCurrency(amount ?? 0, locale);
+  const moneyFmt = (amount) => formatEgpWithCurrency(amount ?? 0, locale);
   const methods = [
     ['CASH', t('method.CASH')],
     ['VISA', t('method.VISA')],
     ['INSTAPAY', t('method.INSTAPAY')],
   ];
-  const rewardHours = (summary.rewardUsage?.minutes ?? 0) / 60;
+  const now = Date.now();
+  const unpaidSummary = summarizeUnpaid(summary.bookings ?? [], now);
+  const sortedBookings = [...(summary.bookings ?? [])].sort((a, b) => {
+    const rank = (row) => {
+      const status = getClosingRowPaymentStatus(row);
+      if (status === 'UNPAID' || status === 'PARTIAL') return 0;
+      return 1;
+    };
+    const diff = rank(a) - rank(b);
+    if (diff !== 0) return diff;
+    return new Date(a.startsAt) - new Date(b.startsAt);
+  });
+
+  const expected = summary.totals?.totalDay ?? 0;
+  const collected = summary.totals?.collected ?? 0;
+  const fullyPaid = collected === expected;
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <ReviewMetric label={t('staff.totalDayRevenue')} value={money(summary.totals?.totalDay)} />
-        <ReviewMetric
-          label={t('staff.bookedHours')}
-          value={`${((summary.bookedMinutes ?? 0) / 60).toFixed(1)} ${t('staff.hours')}`}
-        />
-        <ReviewMetric
-          label={t('staff.rewardHoursUsed')}
-          value={`${rewardHours.toFixed(1)} ${t('staff.hours')}`}
-        />
-        <ReviewMetric label={t('staff.shopSales')} value={money(summary.shop?.total)} />
-        <ReviewMetric
-          label={t('staff.remainingMonthlyTarget')}
-          value={
-            goalLoading
-              ? '—'
-              : goal?.goalHours == null
-                ? t('staff.noGoal')
-                : `${Number(goal.remainingToPlayHours ?? 0).toFixed(1)} ${t('staff.hours')}`
-          }
-        />
-      </div>
-
-      <section className="space-y-3">
-        <h3 className="font-cairo text-base font-extrabold">{t('staff.paymentBreakdown')}</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {methods.map(([method, label]) => (
-            <ReviewMetric
-              key={method}
-              label={label}
-              value={
-                summary.byMethod?.[method] == null
-                  ? t('staff.hiddenUntilClose')
-                  : money(summary.byMethod[method])
-              }
-            />
+    <div className="space-y-5">
+      <div
+        className={`rounded-xl border p-4 ${fullyPaid ? 'border-emerald-300 bg-emerald-50' : 'border-red-300 bg-red-50'}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-cairo text-sm font-black text-navy">{t('staff.closingPaidTitle')}</p>
+          <Badge tone={fullyPaid ? 'success' : 'danger'}>
+            {fullyPaid ? t('staff.closingBalanced') : t('staff.closingGap')}
+          </Badge>
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+          {methods.map(([m, label]) => (
+            <div key={m} className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
+              <p className="font-tajawal text-[10px] text-navy/55">{label}</p>
+              <p className="font-cairo text-sm font-black text-navy">
+                {moneyFmt(summary.byMethod?.[m])}
+              </p>
+            </div>
           ))}
         </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4 sm:p-5">
-          <h3 className="font-cairo text-base font-extrabold">{t('staff.courtBreakdown')}</h3>
-          <div className="mt-3 space-y-3">
-            {(summary.courts ?? []).length ? (
-              summary.courts.map((court) => (
-                <div
-                  key={court.courtId}
-                  className="flex items-center justify-between gap-3 border-b border-navy/7 pb-3 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <p className="font-cairo text-sm font-bold">{court.courtName}</p>
-                    <p className="mt-1 font-tajawal text-xs text-navy/50">
-                      {court.bookings} {t('staff.bookings')} · {(court.minutes / 60).toFixed(1)}{' '}
-                      {t('staff.hours')}
-                    </p>
-                  </div>
-                  <div className="text-end">
-                    <p className="font-cairo text-sm font-black">{money(court.expected)}</p>
-                    <p className="mt-1 font-tajawal text-xs text-navy/50">
-                      {t('staff.collectedThisShift', { defaultValue: 'Collected this shift' })}:{' '}
-                      {court.collected == null
-                        ? t('staff.hiddenUntilClose')
-                        : money(court.collected)}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-navy/50">{t('staff.noCourtActivity')}</p>
-            )}
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
+            <p className="font-tajawal text-[10px] text-navy/55">
+              {t('staff.closingCollectedTotal')}
+            </p>
+            <p className="font-cairo text-sm font-black text-navy">{moneyFmt(collected)}</p>
           </div>
-        </Card>
-
-        <Card className="p-4 sm:p-5">
-          <h3 className="font-cairo text-base font-extrabold">
-            {t('staff.shopAndOperatingExpenses')}
-          </h3>
-          <div className="mt-3 space-y-3">
-            <SummaryLine
-              label={t('staff.shopSalesInBookings')}
-              value={money(summary.shop?.inBookings)}
-            />
-            <SummaryLine label={t('staff.shopSalesOutside')} value={money(summary.shop?.outside)} />
-            {summary.elsewhere && (
-              <div>
-                <SummaryLine
-                  label={t('staff.collectionsOutsideDayBookings', {
-                    defaultValue: 'Collections outside this day’s bookings',
-                  })}
-                  value={money(summary.elsewhere.total)}
-                />
-                <p className="mt-1 font-tajawal text-[11px] leading-5 text-navy/45">
-                  {methods
-                    .map(
-                      ([method, label]) =>
-                        `${label}: ${money(summary.elsewhere.byMethod?.[method])}`,
-                    )
-                    .join(' · ')}
-                </p>
-              </div>
-            )}
-            <SummaryLine label={t('staff.expenses')} value={money(summary.expenses?.total)} />
-            <SummaryLine
-              label={t('staff.freeBookings')}
-              value={`${summary.vouchers?.count ?? 0} · ${((summary.vouchers?.minutes ?? 0) / 60).toFixed(1)} ${t('staff.hours')}`}
-            />
+          <div className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
+            <p className="font-tajawal text-[10px] text-navy/55">
+              {t('staff.closingExpectedTotal')}
+            </p>
+            <p className="font-cairo text-sm font-black text-navy">{moneyFmt(expected)}</p>
           </div>
-        </Card>
-      </section>
+        </div>
+        {!fullyPaid && (
+          <p className="mt-2 font-cairo text-xs font-bold text-red-900">
+            {t('staff.closingGapAmount', {
+              amount: moneyFmt(Math.max(0, expected - collected)),
+            })}
+          </p>
+        )}
+      </div>
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h3 className="font-cairo text-base font-extrabold">{t('staff.bookingBreakdown')}</h3>
-          <p className="font-tajawal text-xs text-navy/50">
-            {summary.bookingCount ?? summary.bookings.length} {t('staff.bookings')}
+      {unpaidSummary.unpaid > 0 && <UnpaidBanner summary={unpaidSummary} money={moneyFmt} t={t} />}
+
+      {goal && goal.goalHours != null && (
+        <div className="rounded-xl border border-navy/10 bg-white p-3">
+          <p className="font-cairo text-xs font-bold text-navy/60">{t('staff.monthlyTarget')}</p>
+          <p className="mt-1 font-cairo text-lg font-black text-navy">
+            {goal.achievedToDateHours.toFixed(1)} / {goal.targetToDateHours.toFixed(1)}{' '}
+            {t('staff.hoursShort')}
+            <span
+              className={`ms-2 font-cairo text-sm font-bold ${goal.deltaHours >= 0 ? 'text-emerald-700' : 'text-red-700'}`}
+            >
+              {goal.deltaHours >= 0 ? '+' : ''}
+              {goal.deltaHours.toFixed(1)}
+            </span>
           </p>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-navy/10">
-          <table className="min-w-[850px] w-full border-collapse text-start text-sm">
-            <thead className="bg-navy/5 font-cairo text-xs text-navy/60">
-              <tr>
-                <th className="px-3 py-3 text-start">{t('staff.booking')}</th>
-                <th className="px-3 py-3 text-end">{t('staff.expected')}</th>
-                <th className="px-3 py-3 text-end">
-                  {t('staff.collectedThisShift', { defaultValue: 'Collected this shift' })}
-                </th>
-                <th className="px-3 py-3 text-end">{t('staff.due')}</th>
-                <th className="px-3 py-3 text-end">{t('staff.shop')}</th>
-                <th className="px-3 py-3 text-start">{t('staff.reward')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(summary.bookings ?? []).map((booking) => (
-                <tr key={booking.appointmentId} className="border-t border-navy/8 align-top">
-                  <td className="px-3 py-3">
-                    <p className="font-cairo font-bold">
+      )}
+
+      <div className="overflow-x-auto rounded-xl border border-navy/10">
+        <table className="min-w-[700px] w-full border-collapse text-start text-xs">
+          <thead className="bg-navy/5 font-cairo text-[10px] text-navy/60">
+            <tr>
+              <th className="px-2 py-2 text-start">{t('staff.booking')}</th>
+              <th className="px-2 py-2 text-end">{t('staff.expected')}</th>
+              <th className="px-2 py-2 text-end">{t('staff.collected')}</th>
+              <th className="px-2 py-2 text-end">{t('staff.due')}</th>
+              <th className="px-2 py-2 text-end">{t('staff.shop')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedBookings.map((booking) => {
+              const rowStyle = paymentStatusStyle(getClosingRowPaymentStatus(booking), {
+                context: isBookingStarted(booking, now) ? 'closing' : 'card',
+              });
+              return (
+                <tr
+                  key={booking.appointmentId}
+                  className="border-t border-navy/8 align-top"
+                  style={{ backgroundColor: rowStyle.background }}
+                >
+                  <td className="px-2 py-2">
+                    <p className="font-cairo text-xs font-bold text-navy">
                       {booking.customerName || t('staff.walkIn')}
                     </p>
-                    <p className="mt-1 text-xs text-navy/50">
+                    <p className="font-tajawal text-[10px] text-navy/55">
                       {booking.courtName} · {formatTime(booking.startsAt, locale)}–
-                      {formatTime(booking.endsAt, locale)} ·{' '}
-                      {((booking.durationMinutes ?? 0) / 60).toFixed(1)} {t('staff.hours')}
+                      {formatTime(booking.endsAt, locale)}
                     </p>
-                    {booking.serviceName && (
-                      <p className="mt-1 text-xs text-navy/50">{booking.serviceName}</p>
-                    )}
-                    {booking.customerPhone && (
-                      <p className="mt-1 text-xs text-navy/45">{booking.customerPhone}</p>
-                    )}
-                    <p className="mt-1 text-[11px] text-navy/45">
-                      {methods
-                        .map(
-                          ([method]) =>
-                            `${t(`method.${method}`)} ${money(booking.byPaymentMethod?.[method])}`,
-                        )
-                        .join(' · ')}
-                    </p>
-                    {booking.internalNote && (
-                      <p className="mt-1 max-w-[360px] whitespace-normal text-[11px] text-navy/45">
-                        {booking.internalNote}
-                      </p>
-                    )}
                   </td>
-                  <td className="px-3 py-3 text-end font-semibold">
-                    {booking.expected == null ? '—' : money(booking.expected)}
+                  <td className="px-2 py-2 text-end font-cairo text-xs">
+                    {moneyFmt(booking.expected)}
                   </td>
-                  <td className="px-3 py-3 text-end font-semibold">
-                    {booking.collected == null
-                      ? t('staff.hiddenUntilClose')
-                      : money(booking.collected)}
-                    {booking.previouslyCollected > 0 && (
-                      <p className="mt-1 whitespace-nowrap text-[11px] font-normal text-navy/45">
-                        {t('staff.previouslyCollected', { defaultValue: 'Previously collected' })}:{' '}
-                        {money(booking.previouslyCollected)}
-                      </p>
-                    )}
+                  <td className="px-2 py-2 text-end font-cairo text-xs">
+                    {moneyFmt(booking.collected)}
                   </td>
-                  <td className="px-3 py-3 text-end font-semibold">
-                    {booking.due == null ? '—' : money(Math.max(0, booking.due))}
+                  <td className="px-2 py-2 text-end font-cairo text-xs font-bold">
+                    {moneyFmt(Math.max(0, booking.due ?? 0))}
                   </td>
-                  <td className="px-3 py-3 text-end">{money(booking.linkedShopSales)}</td>
-                  <td className="px-3 py-3">
-                    {booking.rewardMinutesUsed > 0 ? (
-                      <div>
-                        <Badge tone="info">{(booking.rewardMinutesUsed / 60).toFixed(1)}h</Badge>
-                        <p className="mt-1 text-xs text-navy/55">
-                          {booking.courtCollectAmount == null
-                            ? ''
-                            : `${t('staff.courtCollectionTarget')}: ${money(booking.courtCollectAmount)}${booking.courtCollectMinutes ? ` · ${t('staff.rewardCourtMinutes', { minutes: booking.courtCollectMinutes })}` : ''}`}
-                        </p>
-                        {booking.rewardNonRefundable && (
-                          <p className="mt-1 text-[11px] text-amber-800">
-                            {t('staff.rewardNonRefundable')}
-                          </p>
-                        )}
-                      </div>
-                    ) : booking.isVoucher ? (
-                      <Badge tone="success">{t('staff.freeBooking')}</Badge>
-                    ) : (
-                      '—'
-                    )}
+                  <td className="px-2 py-2 text-end font-cairo text-xs">
+                    {moneyFmt(booking.linkedShopSales)}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-4 sm:p-5">
-          <h3 className="font-cairo text-base font-extrabold">{t('staff.expensesBreakdown')}</h3>
-          <div className="mt-3 space-y-3">
-            <SummaryLine label={t('staff.needs')} value={money(summary.expenses?.needs)} />
-            <SummaryLine label={t('staff.supplies')} value={money(summary.expenses?.supplies)} />
-            <SummaryLine label={t('staff.advances')} value={money(summary.expenses?.advances)} />
-            <SummaryLine
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-navy/10 bg-white p-3">
+          <p className="font-cairo text-xs font-extrabold text-navy">{t('staff.courtBreakdown')}</p>
+          <div className="mt-2 space-y-1 text-xs">
+            {(summary.courts ?? []).map((court) => (
+              <div key={court.courtId} className="flex items-center justify-between gap-2">
+                <span className="font-cairo text-xs">
+                  {court.courtId} · {court.bookings} {t('staff.bookings')}
+                </span>
+                <span className="font-cairo text-xs">{moneyFmt(court.expected)}</span>
+              </div>
+            ))}
+            {(summary.courts ?? []).length === 0 && (
+              <p className="text-navy/50">{t('staff.noCourtActivity')}</p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl border border-navy/10 bg-white p-3">
+          <p className="font-cairo text-xs font-extrabold text-navy">
+            {t('staff.shopAndOperatingExpenses')}
+          </p>
+          <div className="mt-2 space-y-1 text-xs">
+            <Row
+              label={t('staff.shopSalesInBookings')}
+              value={moneyFmt(summary.shop?.inBookings)}
+            />
+            <Row label={t('staff.shopSalesOutside')} value={moneyFmt(summary.shop?.outside)} />
+            <Row label={t('staff.expenses')} value={moneyFmt(summary.expenses?.total)} />
+            <Row
               label={t('staff.totalExpenses')}
-              value={money(summary.expenses?.total)}
+              value={moneyFmt(summary.expenses?.total)}
               strong
             />
           </div>
-        </Card>
-        <Card className="p-4 sm:p-5">
-          <h3 className="font-cairo text-base font-extrabold">{t('staff.cashReconciliation')}</h3>
-          <div className="mt-3 space-y-3">
-            {summary.cash ? (
-              <>
-                <SummaryLine
-                  label={t('staff.expectedDrawerCash')}
-                  value={money(summary.cash.expectedCash)}
-                />
-                <SummaryLine
-                  label={t('staff.openingFloat')}
-                  value={money(summary.cash.openingFloat)}
-                />
-                <SummaryLine
-                  label={t('staff.handoverSent')}
-                  value={money(summary.cash.handoversSent)}
-                />
-                {summary.excel?.difference != null && (
-                  <SummaryLine
-                    label={t('staff.reconciliationDifference')}
-                    value={money(summary.excel.difference)}
-                    strong
-                  />
-                )}
-              </>
-            ) : (
-              <p className="font-tajawal text-xs leading-6 text-navy/50">
-                {t('staff.blindCashHiddenHint')}
-              </p>
-            )}
-          </div>
-        </Card>
-      </section>
+        </div>
+      </div>
 
-      <form className="space-y-4 border-t border-navy/10 pt-5" onSubmit={onSubmit}>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <MoneyInput
-              label={t('staff.countedCash')}
-              placeholder="0.00"
-              value={countedCash}
-              onChange={(event) => setCountedCash(event.target.value)}
-              required
-            />
-            <p className="mt-1.5 font-tajawal text-xs text-navy/50">{t('staff.countedCashHint')}</p>
-          </div>
+      <form className="space-y-3 border-t border-navy/10 pt-4" onSubmit={onSubmit}>
+        {requiresCloseReason && (
           <label className="block">
-            <span className="mb-2 block font-cairo text-sm font-semibold">
-              {t('common.noteOptional')}
+            <span className="mb-1 block font-cairo text-xs font-semibold">
+              {t('staff.closeReasonRequired')}
             </span>
             <textarea
-              rows={3}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder={t('staff.closeNotePlaceholder')}
-              className="w-full rounded-xl border border-navy/10 bg-white px-4 py-3 font-tajawal text-sm text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
+              rows={2}
+              value={closeReason}
+              onChange={(event) => setCloseReason(event.target.value)}
+              placeholder={t('staff.closeReasonPlaceholder')}
+              className="w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 font-tajawal text-xs text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
             />
           </label>
-        </div>
+        )}
+        <label className="block">
+          <span className="mb-1 block font-cairo text-xs font-semibold">
+            {t('common.noteOptional')}
+          </span>
+          <textarea
+            rows={2}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder={t('staff.closeNotePlaceholder')}
+            className="w-full rounded-xl border border-navy/10 bg-white px-3 py-2 font-tajawal text-xs text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
+          />
+        </label>
         {error && (
           <p className="font-tajawal text-sm text-red-700" role="alert">
             {errorMessage(error, t)}
@@ -1405,22 +1218,13 @@ function ClosingReview({
   );
 }
 
-function ReviewMetric({ label, value }) {
+function Row({ label, value, strong = false }) {
   return (
-    <Card className="p-4">
-      <p className="font-cairo text-xs font-semibold text-navy/50">{label}</p>
-      <p className="mt-2 break-words font-cairo text-xl font-black">{value}</p>
-    </Card>
-  );
-}
-
-function SummaryLine({ label, value, strong = false }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <p className={`font-tajawal text-sm ${strong ? 'font-bold text-navy' : 'text-navy/60'}`}>
+    <div className="flex items-center justify-between gap-2">
+      <span className={`font-tajawal text-xs ${strong ? 'font-bold text-navy' : 'text-navy/60'}`}>
         {label}
-      </p>
-      <p className={`font-cairo text-sm ${strong ? 'font-black' : 'font-bold'}`}>{value}</p>
+      </span>
+      <span className={`font-cairo text-xs ${strong ? 'font-black' : 'font-bold'}`}>{value}</span>
     </div>
   );
 }
@@ -1429,57 +1233,79 @@ function ClosingResult({ result, locale, t, onDone }) {
   const variance = result.shift?.variance ?? 0;
   const positive = variance > 0;
   const unresolved = result.unresolved ?? [];
+  const bookings = result.bookings ?? {
+    total: unresolved.length,
+    unpaid: unresolved.length,
+    unpaidDue: unresolved.reduce((n, item) => n + (item.due ?? 0), 0),
+  };
+  const owed = bookings.unpaid > 0;
+  const money = (amount) => formatEgpWithCurrency(amount ?? 0, locale);
+  const rowStyle = paymentStatusStyle('UNPAID', { context: 'closing' });
+
   return (
-    <div className="space-y-5">
-      <Card dark className="border-navy bg-navy p-6 text-white shadow-card-dark">
-        <div className="flex items-center gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-full border border-ball text-ball">
-            {variance === 0 ? (
-              <CheckCircle2 className="size-6" aria-hidden="true" />
+    <div className="space-y-4">
+      <Card dark className="border-navy bg-navy p-4 text-white shadow-card-dark">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-ball text-ball">
+            {owed ? (
+              <AlertTriangle className="size-5" aria-hidden="true" />
             ) : (
-              <AlertTriangle className="size-6" aria-hidden="true" />
+              <CheckCircle2 className="size-5" aria-hidden="true" />
             )}
           </div>
           <div>
-            <Badge tone={variance === 0 ? 'success' : positive ? 'warning' : 'danger'}>
-              {variance === 0 ? t('staff.balanced') : positive ? t('staff.over') : t('staff.short')}
+            <Badge tone={owed ? 'danger' : 'success'}>
+              {owed ? t('staff.closingNeedsAttention') : t('staff.closingAllClear')}
             </Badge>
-            <h3 className="mt-2 font-cairo text-2xl font-black">
-              {variance === 0
-                ? t('staff.noVariance')
-                : `${positive ? '+' : '−'}${formatEgpWithCurrency(Math.abs(variance), locale)}`}
+            <h3 className="mt-1 font-cairo text-base font-black">
+              {owed
+                ? t('staff.closingUnpaidHeadline', {
+                    unpaid: bookings.unpaid,
+                    total: bookings.total,
+                    due: money(bookings.unpaidDue),
+                  })
+                : t('staff.closingAllPaid', { total: bookings.total })}
             </h3>
-            <p className="mt-1 font-tajawal text-sm text-white/65">
-              {variance === 0 ? t('staff.shiftBalancedHint') : t('staff.shiftVarianceHint')}
+            <p className="mt-1 font-tajawal text-xs text-white/65">
+              {variance === 0
+                ? t('staff.closingDrawerBalanced')
+                : `${t('staff.closingDrawerLabel')}: ${positive ? t('staff.over') : t('staff.short')} ${money(Math.abs(variance))}`}
             </p>
             {result.shift?.closedLate && (
-              <p className="mt-2 font-tajawal text-xs text-amber-200">{t('staff.closedLate')}</p>
+              <p className="mt-1 font-tajawal text-[11px] text-amber-200">
+                {t('staff.closedLate')}
+              </p>
             )}
           </div>
         </div>
       </Card>
       {unresolved.length > 0 && (
-        <Card className="p-5">
-          <h3 className="font-cairo font-extrabold">{t('staff.unresolvedBookings')}</h3>
-          <div className="mt-3 space-y-2">
+        <Card className="p-3">
+          <h3 className="font-cairo text-sm font-extrabold">{t('staff.unresolvedBookings')}</h3>
+          <div className="mt-2 space-y-1.5">
             {unresolved.map((item, index) => (
               <div
                 key={item.appointmentId || index}
-                className="flex items-center justify-between gap-3 rounded-xl border border-navy/8 p-3"
+                className={`flex items-center justify-between gap-2 rounded-lg border p-2 text-xs ${rowStyle.border}`}
+                style={{ backgroundColor: rowStyle.background }}
               >
-                <span className="font-cairo text-sm font-bold">
-                  {item.court || item.customerName || t('staff.booking')}
-                </span>
-                <span className="font-cairo text-sm font-black">
-                  {formatEgpWithCurrency(item.due, locale)}
-                </span>
+                <div className="min-w-0">
+                  <p className="font-cairo font-bold">
+                    {item.court || item.customerName || t('staff.booking')}
+                  </p>
+                  <p className="font-tajawal text-[10px] text-navy/60">
+                    {formatTime(item.startsAt, locale)} – {formatTime(item.endsAt, locale)}
+                    {item.reason === 'IN_PROGRESS' ? ` · ${t('staff.closingInProgress')}` : ''}
+                  </p>
+                </div>
+                <span className="font-cairo font-black">{money(item.due)}</span>
               </div>
             ))}
           </div>
         </Card>
       )}
       <Button className="w-full" onClick={onDone}>
-        {t('common.done', { defaultValue: 'Done' })}
+        {t('common.done')}
       </Button>
     </div>
   );

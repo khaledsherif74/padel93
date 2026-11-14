@@ -27,8 +27,6 @@ export default function HandoverInboxPage() {
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const role = useSelector(selectRole);
   const isOwner = role === 'OWNER';
-  // Owners confirm payouts. Accountants confirm handovers. The backend rejects
-  // any attempt to confirm your own transfer, and 403s the wrong kind.
   const kind = isOwner ? 'PAYOUT' : 'HANDOVER';
   const query = useGetTransfersQuery(
     { kind, limit: 50 },
@@ -57,7 +55,6 @@ export default function HandoverInboxPage() {
         }
       />
 
-      {/* Owner gets 403 on payout.create, so hide the payout card for owners. */}
       {!isOwner && <PayoutCard t={t} />}
 
       {query.isLoading ? (
@@ -163,14 +160,13 @@ function HandoverRow({ item, selected, onSelect, locale, t }) {
   );
 }
 
-function ConfirmDrawer({ item, locale, t, onClose }) {
+function ConfirmDrawer({ item, t, onClose }) {
   const [received, setReceived] = useState(
     item.amountSent != null ? (item.amountSent / 100).toFixed(2) : '',
   );
   const [note, setNote] = useState('');
   const [confirm, state] = useConfirmTransferMutation();
 
-  // If the typed amount differs from what was sent, a note is mandatory.
   let parsed = null;
   let parseError = false;
   if (received.trim() !== '') {

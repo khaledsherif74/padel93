@@ -14,3 +14,5 @@ export { default as LoadMore } from './LoadMore';
 export { default as PageHeader } from './PageHeader';
 export { default as ProgressRing } from './ProgressRing';
 export { default as ReceiptCapture } from './ReceiptCapture';
+export { default as StatCard } from './StatCard';
+export { default as MethodRadios } from './MethodRadios';

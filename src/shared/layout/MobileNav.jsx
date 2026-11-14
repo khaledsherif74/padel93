@@ -29,31 +29,8 @@ export default function MobileNav() {
     );
   }
 
-  if (role === 'ACCOUNTANT') {
-    return (
-      <Nav
-        links={[
-          { to: '/app/accountant', key: 'accountant.navDashboard', icon: Home, end: true },
-          { to: '/app/accountant/reports', key: 'accountant.navReports', icon: BarChart3 },
-          { to: '/app/accountant/expenses', key: 'accountant.navExpenses', icon: ReceiptText },
-          { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-        ]}
-        t={t}
-      />
-    );
-  }
 
-  if (role !== 'STAFF') return null;
-
-  return (
-    <Nav
-      links={[
-        { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-        { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-      ]}
-      t={t}
-    />
-  );
+  return null;
 }
 
 function Nav({ links, t }) {

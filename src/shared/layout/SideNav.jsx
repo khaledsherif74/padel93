@@ -14,58 +14,24 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { ownerLinks } from './ownerLinks';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { selectRole } from '../../features/auth/authSelectors';
 
-const ownerLinks = [
-  { to: '/app/owner', key: 'owner.navDashboard', icon: Home, end: true },
-  { to: '/app/owner/bookings', key: 'owner.navAppointments', icon: CalendarDays },
-  { to: '/app/owner/inbox', key: 'owner.navInbox', icon: ClipboardCheck },
-  { to: '/app/owner/payment-flags', key: 'owner.paymentFlags', icon: AlertTriangle },
-  { to: '/app/accountant/verification', key: 'owner.navVerification', icon: ClipboardCheck },
-  { to: '/app/accountant/handovers', key: 'owner.navHandovers', icon: Send },
-  { to: '/app/accountant/shifts', key: 'owner.navShifts', icon: WalletCards },
-  { to: '/app/accountant/reports', key: 'owner.navReports', icon: BarChart3 },
-  { to: '/app/accountant/bookly', key: 'owner.navBookly', icon: RefreshCw },
-  { to: '/app/owner/users', key: 'owner.navUsers', icon: UsersRound },
-  { to: '/app/owner/settings', key: 'owner.navSettings', icon: Settings2 },
-  { to: '/app/owner/corrections', key: 'owner.navCorrections', icon: ShieldCheck },
-  { to: '/app/owner/control', key: 'owner.navControl', icon: ShieldCheck },
-  { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-];
-
-const accountantLinks = [
-  { to: '/app/accountant', key: 'accountant.navDashboard', icon: Home, end: true },
-  { to: '/app/accountant/verification', key: 'accountant.navVerification', icon: ClipboardCheck },
-  { to: '/app/accountant/handovers', key: 'accountant.navHandovers', icon: Send },
-  { to: '/app/accountant/shifts', key: 'accountant.navShifts', icon: WalletCards },
-  { to: '/app/accountant/reports', key: 'accountant.navReports', icon: BarChart3 },
-  { to: '/app/accountant/bookly', key: 'accountant.navBookly', icon: RefreshCw },
-  { to: '/app/accountant/expenses', key: 'accountant.navExpenses', icon: ReceiptText },
-  { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-];
-
-const staffLinks = [
-  { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-  { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-];
+const profileLink = { to: '/app/profile', key: 'common.profile', icon: CircleUserRound };
 
 export default function SideNav() {
   const { t } = useTranslation();
   const role = useSelector(selectRole);
-  const links =
-    role === 'OWNER' ? ownerLinks : role === 'ACCOUNTANT' ? accountantLinks : staffLinks;
+  if (role !== 'OWNER') return null;
+  const links = [...ownerLinks, profileLink];
 
   return (
     <aside className="hidden w-72 shrink-0 border-e border-navy/10 bg-white p-4 lg:block">
       <div className="sticky top-[92px] max-h-[calc(100vh-110px)] space-y-1 overflow-y-auto pe-1">
         <p className="px-3 pb-2 font-cairo text-xs font-bold uppercase tracking-[0.15em] text-navy/45">
-          {role === 'OWNER'
-            ? t('owner.navSection')
-            : role === 'ACCOUNTANT'
-              ? t('accountant.navSection')
-              : t('shell.operations')}
+          {t('owner.navSection')}
         </p>
 
         {links.map(({ to, key, icon: Icon, end }) => (

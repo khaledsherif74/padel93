@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
-  CircleUserRound,
   ClipboardCheck,
   Home,
   ReceiptText,
@@ -16,6 +15,8 @@ import {
   UsersRound,
   WalletCards,
 } from 'lucide-react';
+import { ownerLinks } from './ownerLinks';
+import { hubLink } from './hubLink';
 import AppHeader from './AppHeader';
 import SideNav from './SideNav';
 import MobileNav from './MobileNav';
@@ -52,7 +53,7 @@ export default function AppShell() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="min-w-0 flex-1 px-3 pb-24 pt-5 outline-none sm:px-6 lg:px-8 lg:pb-10 lg:pt-7"
+          className={`min-w-0 flex-1 px-3 pt-5 outline-none sm:px-6 lg:px-8 lg:pb-10 lg:pt-7 ${role === 'OWNER' ? 'pb-24' : 'pb-10'}`}
         >
           <Outlet />
         </main>
@@ -65,40 +66,6 @@ export default function AppShell() {
 }
 
 function getLinksForRole(role) {
-  if (role === 'OWNER') {
-    return [
-      { to: '/app/owner', key: 'owner.navDashboard', icon: Home, end: true },
-      { to: '/app/owner/bookings', key: 'owner.navAppointments', icon: CalendarDays },
-      { to: '/app/owner/inbox', key: 'owner.navInbox', icon: ClipboardCheck },
-      { to: '/app/owner/payment-flags', key: 'owner.paymentFlags', icon: AlertTriangle },
-      { to: '/app/accountant/verification', key: 'owner.navVerification', icon: ClipboardCheck },
-      { to: '/app/accountant/handovers', key: 'owner.navHandovers', icon: Send },
-      { to: '/app/accountant/shifts', key: 'owner.navShifts', icon: WalletCards },
-      { to: '/app/accountant/reports', key: 'owner.navReports', icon: BarChart3 },
-      { to: '/app/accountant/bookly', key: 'owner.navBookly', icon: RefreshCw },
-      { to: '/app/owner/users', key: 'owner.navUsers', icon: UsersRound },
-      { to: '/app/owner/settings', key: 'owner.navSettings', icon: Settings2 },
-      { to: '/app/owner/corrections', key: 'owner.navCorrections', icon: ShieldCheck },
-      { to: '/app/owner/control', key: 'owner.navControl', icon: ShieldCheck },
-    ];
-  }
-  if (role === 'ACCOUNTANT') {
-    return [
-      { to: '/app/accountant', key: 'accountant.navDashboard', icon: Home, end: true },
-      {
-        to: '/app/accountant/verification',
-        key: 'accountant.navVerification',
-        icon: ClipboardCheck,
-      },
-      { to: '/app/accountant/handovers', key: 'accountant.navHandovers', icon: Send },
-      { to: '/app/accountant/shifts', key: 'accountant.navShifts', icon: WalletCards },
-      { to: '/app/accountant/reports', key: 'accountant.navReports', icon: BarChart3 },
-      { to: '/app/accountant/bookly', key: 'accountant.navBookly', icon: RefreshCw },
-      { to: '/app/accountant/expenses', key: 'accountant.navExpenses', icon: ReceiptText },
-    ];
-  }
-  return [
-    { to: '/app/staff', key: 'common.dashboard', icon: Home, end: true },
-    { to: '/app/profile', key: 'common.profile', icon: CircleUserRound },
-  ];
+  if (role === 'OWNER') return [hubLink, ...ownerLinks];
+  return [];
 }

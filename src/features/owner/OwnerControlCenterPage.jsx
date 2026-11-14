@@ -28,6 +28,7 @@ const STAFF_KEYS = [
   'transfer.cancel',
   'appointment.seeCustomerPhone',
   'goal.view',
+  'attendance.clock',
 ];
 
 const ACCOUNTANT_KEYS = [
@@ -43,6 +44,10 @@ const ACCOUNTANT_KEYS = [
   'appointment.seeCustomerPhone',
   'appointment.viewOtherDays',
   'goal.view',
+  'attendance.view',
+  'attendance.adjust',
+  'schedule.manage',
+  'payroll.manage',
 ];
 
 const ACTION_KEYS = [
@@ -490,6 +495,11 @@ function permissionLabel(key, t) {
     'appointment.seeCustomerPhone': 'seeCustomerPhone',
     'appointment.viewOtherDays': 'viewOtherDays',
     'goal.view': 'goalView',
+    'attendance.clock': 'attendanceClock',
+    'attendance.view': 'attendanceView',
+    'attendance.adjust': 'attendanceAdjust',
+    'schedule.manage': 'scheduleManage',
+    'payroll.manage': 'payrollManage',
   };
   return t(`owner.permission.${labels[key] ?? key}`, key);
 }
@@ -511,6 +521,11 @@ function permissionDescription(key, t) {
     'appointment.seeCustomerPhone': 'seeCustomerPhone',
     'appointment.viewOtherDays': 'viewOtherDays',
     'goal.view': 'goalView',
+    'attendance.clock': 'attendanceClock',
+    'attendance.view': 'attendanceView',
+    'attendance.adjust': 'attendanceAdjust',
+    'schedule.manage': 'scheduleManage',
+    'payroll.manage': 'payrollManage',
   };
   return t(`owner.permissionHint.${hints[key] ?? key}`, t('owner.permissionDescriptionFallback'));
 }

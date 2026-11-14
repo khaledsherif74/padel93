@@ -24,7 +24,6 @@ export default function OwnerCorrectionsPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
 
-  // Incomes: only those on underpaid bookings with a PENDING flag.
   const incomes = useGetIncomesQuery(
     { status: 'ACTIVE', hasPendingFlag: 'true', limit: 50 },
     { refetchOnMountOrArgChange: true, refetchOnFocus: true },
@@ -35,7 +34,6 @@ export default function OwnerCorrectionsPage() {
   const [voidIncome, incomeState] = useVoidIncomeMutation();
   const [voidExpense, expenseState] = useVoidExpenseMutation();
 
-  // active = { type: 'confirmIncome' | 'voidIncome' | 'voidExpense', item, ... }
   const [active, setActive] = useState(null);
   const [reason, setReason] = useState('');
 

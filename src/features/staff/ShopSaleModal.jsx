@@ -13,7 +13,7 @@ import Modal from '../../shared/ui/Modal';
 import Button from '../../shared/ui/Button';
 import Input from '../../shared/ui/Input';
 import MoneyInput from '../../shared/ui/MoneyInput';
-import Select from '../../shared/ui/Select';
+import MethodRadios from '../../shared/ui/MethodRadios';
 import ReceiptCapture from '../../shared/ui/ReceiptCapture';
 
 const schema = z.object({
@@ -34,6 +34,7 @@ export default function ShopSaleModal({ open, appointment, onClose, onSuccess })
   const {
     register,
     watch,
+    setValue,
     handleSubmit,
     reset,
     formState: { errors },
@@ -92,19 +93,23 @@ export default function ShopSaleModal({ open, appointment, onClose, onSuccess })
           {...register('amount')}
         />
 
-        <Select
-          label={t('common.method')}
-          options={[
-            { value: 'CASH', label: t('method.CASH') },
-            ...(permissions?.['income.createCard'] !== false
-              ? [
-                  { value: 'VISA', label: t('method.VISA') },
-                  { value: 'INSTAPAY', label: t('method.INSTAPAY') },
-                ]
-              : []),
-          ]}
-          {...register('method')}
-        />
+        <div>
+          <span className="mb-2 block font-cairo text-sm font-semibold text-navy">
+            {t('common.method')}
+          </span>
+          <MethodRadios
+            name="shop-sale-method"
+            value={method}
+            onChange={(next) => {
+              setValue('method', next, { shouldDirty: true });
+              setReceiptId('');
+            }}
+            methods={
+              permissions?.['income.createCard'] !== false ? ['CASH', 'VISA', 'INSTAPAY'] : ['CASH']
+            }
+            t={t}
+          />
+        </div>
 
         {method !== 'CASH' && (
           <>

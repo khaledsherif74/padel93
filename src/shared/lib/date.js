@@ -26,12 +26,16 @@ export function currentMonth() {
   return nowCairo().toFormat('yyyy-LL');
 }
 
+export function addDays(day, n) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function formatDateTime(value, locale = 'ar-EG') {
   if (!value) return '—';
-
   const dt = DateTime.fromISO(value, { zone: CAIRO_ZONE });
   if (!dt.isValid) return String(value);
-
   return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -41,10 +45,8 @@ export function formatDateTime(value, locale = 'ar-EG') {
 
 export function formatTime(value, locale = 'ar-EG') {
   if (!value) return '—';
-
   const dt = DateTime.fromISO(value, { zone: CAIRO_ZONE });
   if (!dt.isValid) return String(value);
-
   return new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',

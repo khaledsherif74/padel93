@@ -21,6 +21,33 @@ const ERROR_KEYS = new Set([
   'VALIDATION_ERROR',
 ]);
 
+const ATTENDANCE_CODES = new Set([
+  'GEOFENCE_NOT_CONFIGURED',
+  'BAD_COORDINATES',
+  'GPS_WEAK',
+  'OUT_OF_RANGE',
+  'ALREADY_CLOCKED_IN',
+  'NOT_CLOCKED_IN',
+  'OVERLAPS_PREVIOUS',
+  'OVERLAPS_OTHER',
+  'TIME_IN_FUTURE',
+  'TIME_TOO_OLD',
+  'TIME_BEFORE_CLOCK_IN',
+  'TIME_BEFORE_BREAK_START',
+  'PHOTO_INVALID',
+  'PHOTO_ALREADY_USED',
+  'DUPLICATE_PHOTO',
+  'PHOTO_DELETED',
+  'UNSUPPORTED_FILE',
+  'BREAK_ALREADY_OPEN',
+  'NO_OPEN_BREAK',
+  'PAST_DATE',
+  'EMPTY_SHIFT',
+  'BAD_USER',
+  'OVERLAPS_SHIFT',
+  'CLIENT_REQUEST_ID_TAKEN',
+]);
+
 function unwrapPayload(error) {
   const payload = error?.data?.error;
   if (payload && typeof payload === 'object') return payload;
@@ -116,6 +143,11 @@ export function errorMessage(error, t) {
   if (code === 'PRICE_MISSING') return t('errors.priceMissing');
   if (code === 'BOOKLY_OFF') return t('errors.booklyOff');
   if (code === 'SYNC_RUNNING') return t('errors.syncRunning');
+  if (ATTENDANCE_CODES.has(code)) {
+    const values =
+      details && typeof details === 'object' && !Array.isArray(details) ? details : undefined;
+    return values ? t(`attendance.errors.${code}`, values) : t(`attendance.errors.${code}`);
+  }
   if (ERROR_KEYS.has(code) && message) return message;
 
   return message || t('errors.generic');
