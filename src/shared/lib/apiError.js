@@ -136,6 +136,7 @@ export function errorMessage(error, t) {
   if (code === 'SHIFT_ALREADY_OPEN') return t('errors.shiftAlreadyOpen');
   if (code === 'ANOTHER_SHIFT_OPEN') return t('errors.anotherShiftOpen');
   if (code === 'NOT_PENDING') return t('errors.notPending');
+  if (code === 'NOTE_REQUIRED') return t('staff.handoverNoteRequired');
   if (code === 'WAIVER_TOO_BIG') return t('errors.waiverTooBig');
   if (code === 'STALE_REQUEST') return t('errors.staleRequest');
   if (code === 'RATE_LIMITED') return t('errors.rateLimited');

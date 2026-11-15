@@ -13,6 +13,7 @@ export default {
         white: 'rgb(var(--white-rgb) / <alpha-value>)',
       },
       fontFamily: {
+        inter: ['Inter', 'system-ui', 'sans-serif'],
         cairo: ['Cairo', 'sans-serif'],
         tajawal: ['Tajawal', 'sans-serif'],
       },

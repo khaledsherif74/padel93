@@ -1,4 +1,6 @@
 import { Bell, CheckCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,6 +10,7 @@ import {
 } from '../../app/api';
 import { formatDateTime } from '../../shared/lib/date';
 import { errorMessage } from '../../shared/lib/apiError';
+import { selectRole } from '../auth/authSelectors';
 import PageHeader from '../../shared/ui/PageHeader';
 import Card from '../../shared/ui/Card';
 import Button from '../../shared/ui/Button';
@@ -17,6 +20,8 @@ import ErrorState from '../../shared/ui/ErrorState';
 
 export default function NotificationsPage() {
   const { t, i18n } = useTranslation();
+  const role = useSelector(selectRole);
+  const handoverPath = role === 'STAFF' ? '/app/staff/handover' : '/app/accountant/handovers';
   const [cursor, setCursor] = useState();
   const [items, setItems] = useState([]);
   const query = useGetNotificationsQuery({
@@ -120,9 +125,20 @@ export default function NotificationsPage() {
                     </span>
                   </div>
                   <p className="mt-2 font-tajawal text-sm leading-7 text-navy/65">{item.body}</p>
-                  <Button variant="ghost" className="mt-2 px-0" onClick={() => read(item.id)}>
-                    {t('notifications.markRead')}
-                  </Button>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    {String(item.type ?? '').startsWith('TRANSFER_') && (
+                      <Link
+                        to={handoverPath}
+                        onClick={() => read(item.id)}
+                        className="inline-flex min-h-10 items-center rounded-lg bg-edge px-3 py-2 font-cairo text-xs font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-ball"
+                      >
+                        {t('staff.openHandover')}
+                      </Link>
+                    )}
+                    <Button variant="ghost" className="px-0" onClick={() => read(item.id)}>
+                      {t('notifications.markRead')}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>

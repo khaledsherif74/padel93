@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&family=Tajawal:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;800;900&family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -90,7 +90,6 @@ select {
 .diagonal-cut {
   clip-path: polygon(17% 0, 100% 0, 100% 100%, 0 82%);
 }
-
 
 .skip-link {
   position: fixed;

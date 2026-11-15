@@ -12,8 +12,10 @@ describe('addDays', () => {
 });
 
 describe('canViewDay', () => {
-  it('today, the open shift day and the last N days are viewable without a grant', () => {
+  it('today, future schedules, the open shift day and the last N days are viewable without a grant', () => {
     expect(canViewDay({ ...base, date: '2026-11-11' })).toBe(true);
+    expect(canViewDay({ ...base, date: '2026-11-12' })).toBe(true);
+    expect(canEditDay({ ...base, date: '2026-11-12' })).toBe(false);
     expect(canViewDay({ ...base, date: '2026-11-08' })).toBe(true);
     expect(canViewDay({ ...base, date: '2026-11-07' })).toBe(false);
     expect(canViewDay({ ...base, date: '2026-11-01', shiftBusinessDate: '2026-11-01' })).toBe(true);
@@ -21,8 +23,16 @@ describe('canViewDay', () => {
   it('an active approved grant of either kind opens older days', () => {
     expect(canViewDay({ ...base, date: '2026-11-01', request: grant('VIEW') })).toBe(true);
     expect(canViewDay({ ...base, date: '2026-11-01', request: grant('EDIT') })).toBe(true);
-    expect(canViewDay({ ...base, date: '2026-11-01', request: { status: 'PENDING', isActive: false, kind: 'VIEW' } })).toBe(false);
-    expect(canViewDay({ ...base, date: '2026-11-01', request: { ...grant('VIEW'), isActive: false } })).toBe(false);
+    expect(
+      canViewDay({
+        ...base,
+        date: '2026-11-01',
+        request: { status: 'PENDING', isActive: false, kind: 'VIEW' },
+      }),
+    ).toBe(false);
+    expect(
+      canViewDay({ ...base, date: '2026-11-01', request: { ...grant('VIEW'), isActive: false } }),
+    ).toBe(false);
   });
   it('viewDays 0 means only today and open shift day', () => {
     expect(canViewDay({ ...base, viewDays: 0, date: '2026-11-10' })).toBe(false);
@@ -32,6 +42,7 @@ describe('canViewDay', () => {
 describe('canEditDay', () => {
   it('only today, the open shift day, or an active EDIT grant', () => {
     expect(canEditDay({ ...base, date: '2026-11-11' })).toBe(true);
+    expect(canEditDay({ ...base, date: '2026-11-12' })).toBe(false);
     expect(canEditDay({ ...base, date: '2026-11-10' })).toBe(false);
     expect(canEditDay({ ...base, date: '2026-11-10', request: grant('VIEW') })).toBe(false);
     expect(canEditDay({ ...base, date: '2026-11-10', request: grant('EDIT') })).toBe(true);

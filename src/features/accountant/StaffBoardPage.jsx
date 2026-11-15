@@ -65,7 +65,10 @@ export default function StaffBoardPage() {
             />
           </div>
           {board.data.items.length === 0 ? (
-            <EmptyState title={t('accountant.noStaff')} description={t('accountant.staffBoardHint')} />
+            <EmptyState
+              title={t('accountant.noStaff')}
+              description={t('accountant.staffBoardHint')}
+            />
           ) : (
             <ul className="space-y-3">
               {board.data.items.map((person) => (
@@ -74,7 +77,9 @@ export default function StaffBoardPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <p className="font-cairo text-lg font-extrabold text-navy">{person.name}</p>
-                        {person.openShift && <Badge tone="success">{t('accountant.openShiftBadge')}</Badge>}
+                        {person.openShift && (
+                          <Badge tone="success">{t('accountant.openShiftBadge')}</Badge>
+                        )}
                       </div>
                       <Link
                         to={`/app/accountant/staff/${person.id}`}
@@ -84,10 +89,23 @@ export default function StaffBoardPage() {
                       </Link>
                     </div>
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                      <Figure label={t('accountant.collectedToday')} value={money(person.collectedToday)} />
+                      <Figure
+                        label={t('accountant.collectedToday')}
+                        value={money(person.collectedToday)}
+                      />
                       <Figure label={t('accountant.cashToday')} value={money(person.cashToday)} />
-                      <Figure label={t('accountant.handedOverToday')} value={money(person.handedOverToday)} />
-                      <Figure label={t('accountant.unhandedToday')} value={money(person.unhandedToday)} />
+                      <Figure
+                        label={t('accountant.handedOverToday')}
+                        value={money(person.handedOverToday)}
+                      />
+                      <Figure
+                        label={t('accountant.receivedToday')}
+                        value={money(person.receivedToday)}
+                      />
+                      <Figure
+                        label={t('accountant.unhandedToday')}
+                        value={money(person.unhandedToday)}
+                      />
                       <Figure
                         label={t('accountant.pendingHandovers')}
                         value={`${person.pendingHandovers.count} · ${money(person.pendingHandovers.amount)}`}

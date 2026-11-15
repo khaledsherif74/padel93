@@ -27,9 +27,8 @@ export default function HandoverInboxPage() {
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const role = useSelector(selectRole);
   const isOwner = role === 'OWNER';
-  const kind = isOwner ? 'PAYOUT' : 'HANDOVER';
   const query = useGetTransfersQuery(
-    { kind, limit: 50 },
+    { ...(isOwner ? {} : { kind: 'HANDOVER' }), limit: 50 },
     { refetchOnMountOrArgChange: true, refetchOnFocus: true },
   );
   const [selectedId, setSelectedId] = useState(null);

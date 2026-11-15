@@ -2,12 +2,12 @@ import {
   AlertTriangle,
   Banknote,
   CheckCircle2,
-  Filter,
+  ChevronLeft,
+  ChevronDown,
+  Phone,
   LockKeyhole,
-  RotateCcw,
   ShoppingBag,
   ReceiptText,
-  WalletCards,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -30,13 +30,11 @@ import { businessDate, formatTime, addDays } from '../../shared/lib/date';
 import { selectPermissions, selectUser } from '../auth/authSelectors';
 import { errorMessage } from '../../shared/lib/apiError';
 import { useClientRequestId } from '../../shared/lib/clientRequestId';
-import { formatEgpWithCurrency } from '../../shared/lib/money';
+import { formatEgp, formatEgpWithCurrency } from '../../shared/lib/money';
 import { groupBookings } from '../../shared/lib/bookingGroups';
 import { canEditDay, canViewDay } from '../../shared/lib/dayAccess';
 import {
   getAppointmentPaymentStatus,
-  getClosingRowPaymentStatus,
-  isBookingStarted,
   paymentStatusStyle,
   summarizeUnpaid,
 } from '../../shared/lib/paymentStatus';
@@ -83,6 +81,13 @@ export default function StaffHomePage() {
   const shifts = useGetCurrentShiftsQuery(undefined, { pollingInterval: 15_000 });
   const shift = shifts.data?.items?.[0] ?? null;
   const shiftBusinessDate = shift?.businessDate ?? null;
+  const closingBusinessDate = shiftBusinessDate ?? today;
+  const closingDateLabel = new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${closingBusinessDate}T12:00:00Z`));
   const selectedDate = day || shiftBusinessDate || today;
   const accessRequests = useGetMyStaffDateAccessRequestsQuery(undefined, {
     pollingInterval: 15_000,
@@ -348,329 +353,388 @@ export default function StaffHomePage() {
     return { goalHours, achievedToDateHours, targetToDateHours, deltaHours, onTrack };
   }, [goalData]);
 
+  const collectedToday = financialDataConsistent ? (financialData.todayBalance ?? 0) : 0;
+  const toBeCollected = financialDataConsistent ? (financialData.outstanding.amount ?? 0) : 0;
+  const collectionTotal = collectedToday + toBeCollected;
+  const collectionProgress =
+    collectionTotal > 0 ? Math.min(100, (collectedToday / collectionTotal) * 100) : 0;
+  const cashCollected = financialDataConsistent
+    ? collectedToday -
+      (financialData.visa ?? 0) -
+      (financialData.instapay ?? 0) -
+      (financialData.shopSales ?? 0)
+    : 0;
+  const todayGoalAchieved = goalSummary?.achievedToDateHours ?? 0;
+  const todayGoalTarget = goalSummary?.targetToDateHours ?? 0;
+  const monthGoalAchieved = goalData?.completedHours ?? goalData?.bookedHours ?? 0;
+  const monthGoalTarget = goalData?.goalHours ?? 0;
+  const minimumSelectableDate = addDays(today, -Math.max(0, Number(settings?.staffViewDays ?? 3)));
+  const canGoPrevious = selectedDate > minimumSelectableDate;
+
   return (
-    <div className="mx-auto max-w-3xl space-y-4 pt-1 pb-4">
-      {showShiftFinancialOverview && financial.isError && (
-        <ErrorState
-          title={t('staff.financialDataUnavailable')}
-          description={errorMessage(financial.error, t)}
-          onRetry={financial.refetch}
-        />
-      )}
-      {showShiftFinancialOverview && financial.isSuccess && !financialDataConsistent && (
-        <ErrorState
-          title={t('staff.financialDataOutOfSync')}
-          description={t('staff.financialDataOutOfSyncHint')}
-          onRetry={financial.refetch}
-        />
-      )}
-
-      {canViewSelectedDate && !showShiftFinancialOverview && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-tajawal text-sm leading-6 text-blue-950">
-          {t('staff.otherDayFinancialsHint', {
-            viewDate: selectedDate,
-            shiftDate: shiftBusinessDate ?? today,
-          })}
-          {shiftBusinessDate && (
-            <Button className="ms-2" variant="ghost" onClick={() => setDay(shiftBusinessDate)}>
-              {t('staff.useActiveShiftDate')}
-            </Button>
-          )}
-          {canViewSelectedDate && !canEditSelectedDate && <ReadOnlyDayBanner date={selectedDate} />}
-        </div>
-      )}
-
-      {/* R1: three compact cards (row on mobile, col on desktop) */}
-      <section
-        className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-        aria-label={t('staff.summaryCards')}
-      >
-        <CompactStatCard
-          label={t('staff.todayBalance')}
-          value={financialDataConsistent ? money(financialData.todayBalance ?? 0) : '—'}
-          loading={financialLoading}
+    <div className="staff-design relative z-10 -mt-14 min-h-screen min-w-0 bg-[#F3F5F9] pb-[max(2rem,env(safe-area-inset-bottom))] font-inter text-[#0E1B2B] before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-0 before:h-14 before:bg-[#002346] before:content-[''] sm:-mt-16 sm:before:h-16 lg:-mt-[76px] lg:before:h-[76px]">
+      <div className="relative z-10 mx-auto w-full max-w-[1440px] min-w-0 space-y-4 px-4 sm:px-6 lg:px-8">
+        <section
+          aria-label={t('staff.moneyToday')}
+          className="relative z-10 grid gap-4 rounded-[18px] border border-[#E2E8F0] bg-white p-4 shadow-[0_8px_24px_rgba(0,35,70,0.12)] sm:p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:gap-6 lg:p-6"
         >
-          <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 font-tajawal text-[11px] leading-4 text-navy/55">
-            <span>
-              {t('method.CASH')}:{' '}
-              {financialDataConsistent
-                ? money(
-                    (financialData.todayBalance ?? 0) - financialData.visa - financialData.instapay,
-                  )
-                : '—'}
-            </span>
-            <span>
-              {t('method.VISA')}: {financialDataConsistent ? money(financialData.visa) : '—'}
-            </span>
-            <span>
-              {t('method.INSTAPAY')}:{' '}
-              {financialDataConsistent ? money(financialData.instapay) : '—'}
-            </span>
-            <span>
-              {t('staff.shopSales')}:{' '}
-              {financialDataConsistent ? money(financialData.shopSales) : '—'}
-            </span>
-          </div>
-        </CompactStatCard>
-        <CompactStatCard
-          label={t('staff.toBeCollected')}
-          value={financialDataConsistent ? money(financialData.outstanding.amount) : '—'}
-          loading={financialLoading}
-        >
-          {financialDataConsistent && (
-            <p className="mt-1.5 font-tajawal text-[11px] leading-4 text-navy/55">
-              {t('staff.outstandingPaymentsHint', { count: financialData.outstanding.count })}
+          <div className="min-w-0">
+            <p className="font-inter text-sm font-semibold text-[#4A5A70]">
+              {t('staff.collectedToday')}
             </p>
-          )}
-        </CompactStatCard>
-        <CompactStatCard
-          label={t('staff.todayGoal')}
-          value={
-            !goalSummary
-              ? '—'
-              : goalSummary.onTrack
-                ? `+${goalSummary.deltaHours.toFixed(1)}${t('staff.hoursShort')}`
-                : `${goalSummary.deltaHours.toFixed(1)}${t('staff.hoursShort')}`
-          }
-          tone={!goalSummary ? 'navy' : goalSummary.onTrack ? 'green' : 'red'}
-        >
-          {goalSummary && (
-            <p className="mt-1.5 font-tajawal text-[11px] leading-4 text-navy/55">
-              {goalSummary.achievedToDateHours.toFixed(1)} /{' '}
-              {goalSummary.targetToDateHours.toFixed(1)} {t('staff.hoursShort')}
+            <p className="mt-1 break-words font-inter text-[32px] font-extrabold leading-none tracking-[-0.03em] text-[#002346] sm:text-4xl">
+              {financialDataConsistent ? money(collectedToday) : '—'}
             </p>
-          )}
-        </CompactStatCard>
-      </section>
-
-      {/* Filters (date, court, reset) on a single line */}
-      <div className="flex w-full items-center gap-1.5 overflow-x-auto pb-1 sm:gap-2">
-        <div className="min-w-fit flex-1">
-          <SegmentedDateFilter
-            items={filterItems}
-            activeId={activeFilter}
-            onChange={onFilterChange}
-            ariaLabel={t('staff.bookingDateFilter')}
-          />
-        </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          <label className="flex items-center gap-1 rounded-xl border border-navy/10 bg-white px-2 py-1 font-tajawal text-[10px] text-navy sm:px-3 sm:py-1.5 sm:text-xs">
-            <Filter className="size-3 text-edge sm:size-3.5" aria-hidden="true" />
-            <span className="font-cairo text-[10px] font-semibold sm:text-xs">
-              {t('staff.courtFilter')}
-            </span>
-            <select
-              value={court}
-              onChange={(event) => setCourt(event.target.value)}
-              className="bg-transparent font-tajawal text-[10px] outline-none sm:text-xs"
-            >
-              <option value="">{t('common.all')}</option>
-              {(courtOptions.data?.items ?? []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              setDay(null);
-              setCourt('');
-            }}
-            className="flex items-center justify-center gap-1 rounded-xl px-2 py-1 font-cairo text-[10px] font-semibold text-navy/60 outline-none hover:bg-navy/5 focus-visible:ring-2 focus-visible:ring-edge sm:px-3 sm:py-1.5 sm:text-xs"
-          >
-            <RotateCcw className="size-3 sm:size-3.5" aria-hidden="true" />
-            {t('common.reset')}
-          </button>
-        </div>
-      </div>
-
-      <section>
-        {!canViewSelectedDate ? (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
-            <div className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-amber-300 text-amber-800">
-                <LockKeyhole className="size-4" aria-hidden="true" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="font-cairo text-sm font-extrabold text-amber-950">
-                  {t('staff.pastDayLocked')}
-                </h3>
-                <p className="mt-1 font-tajawal text-xs leading-5 text-amber-900">
-                  {t('staff.pastDayLockedHint')}
-                </p>
-                {selectedDateRequest?.status === 'PENDING' ? (
-                  <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-cairo text-xs font-bold text-amber-900">
-                    {t('staff.accessRequestPending')}
-                  </p>
-                ) : !requestFormOpen ? (
-                  <Button className="mt-2" onClick={() => setRequestFormOpen(true)}>
-                    {t('staff.requestPastDayAccess')}
-                  </Button>
-                ) : (
-                  <form className="mt-2 space-y-2" onSubmit={submitDateAccessRequest}>
-                    <textarea
-                      value={requestReason}
-                      onChange={(event) => setRequestReason(event.target.value)}
-                      minLength={5}
-                      maxLength={500}
-                      required
-                      rows={2}
-                      className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 font-tajawal text-sm text-navy"
-                      placeholder={t('staff.accessRequestReasonPlaceholder')}
-                    />
-                    {dateAccessRequestState.error && (
-                      <p className="font-tajawal text-sm text-red-700" role="alert">
-                        {errorMessage(dateAccessRequestState.error, t)}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="submit"
-                        loading={dateAccessRequestState.isLoading}
-                        disabled={requestReason.trim().length < 5}
-                      >
-                        {t('staff.sendAccessRequest')}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setRequestFormOpen(false)}
-                      >
-                        {t('common.cancel')}
-                      </Button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-          </section>
-        ) : appointmentsLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5, 6].map((item) => (
-              <Skeleton key={item} className="h-20" />
-            ))}
-          </div>
-        ) : appointments.isError ? (
-          <ErrorState
-            title={t('errors.generic')}
-            description={errorMessage(appointments.error, t)}
-            onRetry={appointments.refetch}
-          />
-        ) : !hasAnyBooking ? (
-          <EmptyState
-            title={t('staff.noAppointments')}
-            description={t('staff.noAppointmentsHint')}
-          />
-        ) : (
-          <div className="space-y-2">
-            {bookingGroups.active.map((appointment) => (
-              <BookingRow
-                key={appointment.id}
-                appointment={appointment}
-                locale={locale}
-                t={t}
-                canRecordIncome={canRecordIncome}
-                onRecordPayment={() => setPaymentAppointment(appointment)}
-                onRecordSale={() => openLinkedSale(appointment)}
-                userId={currentUser?.id}
-                canEditDay={canEditSelectedDate}
-                onEditIncome={setEditingIncome}
+            <div className="mt-4 h-[10px] overflow-hidden rounded-full bg-[#E6EBF2]">
+              <div
+                className="h-full rounded-full bg-[#8DC63F] transition-[width]"
+                style={{ width: `${collectionProgress}%` }}
               />
-            ))}
-            {bookingGroups.paid.length > 0 && (
-              <details className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-2">
-                <summary className="cursor-pointer font-cairo text-sm font-bold text-emerald-900">
-                  {t('staff.paidBookings', { count: bookingGroups.paid.length })}
-                </summary>
-                <div className="mt-2 space-y-2">
-                  {bookingGroups.paid.map((appointment) => (
-                    <BookingRow
-                      key={appointment.id}
-                      appointment={appointment}
-                      locale={locale}
-                      t={t}
-                      canRecordIncome={canRecordIncome}
-                      onRecordPayment={() => setPaymentAppointment(appointment)}
-                      onRecordSale={() => openLinkedSale(appointment)}
-                      userId={currentUser?.id}
-                      canEditDay={canEditSelectedDate}
-                      onEditIncome={setEditingIncome}
-                    />
-                  ))}
-                </div>
-              </details>
+            </div>
+            <div className="mt-2 flex items-start justify-between gap-3 font-inter text-[11px] leading-4 text-[#4A5A70] sm:text-xs">
+              <span>
+                {financialDataConsistent
+                  ? t('staff.collectedOfTarget', {
+                      collected: money(collectedToday),
+                      total: money(collectionTotal),
+                    })
+                  : '—'}
+              </span>
+              <span className="shrink-0 text-end font-bold text-[#8F460A]">
+                {financialDataConsistent
+                  ? t('staff.toCollectCount', {
+                      amount: money(toBeCollected),
+                      count: financialData.outstanding.count,
+                    })
+                  : '—'}
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-4 gap-1.5 sm:gap-2">
+              <MoneyChip
+                label={t('method.CASH')}
+                value={financialDataConsistent ? money(cashCollected) : '—'}
+              />
+              <MoneyChip
+                label={t('staff.card')}
+                value={financialDataConsistent ? money(financialData.visa) : '—'}
+              />
+              <MoneyChip
+                label={t('method.INSTAPAY')}
+                value={financialDataConsistent ? money(financialData.instapay) : '—'}
+              />
+              <MoneyChip
+                label={t('staff.shopShort')}
+                value={financialDataConsistent ? money(financialData.shopSales) : '—'}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 border-t border-[#EEF2F6] pt-4 lg:border-s lg:border-t-0 lg:ps-6 lg:pt-0">
+            <GoalRing
+              label={t('staff.goalToday')}
+              achieved={todayGoalAchieved}
+              target={todayGoalTarget}
+              color="#8DC63F"
+              unit={t('staff.hoursShort')}
+              loading={goalQuery.isLoading}
+            />
+            <GoalRing
+              label={t('staff.goalMonth')}
+              achieved={monthGoalAchieved}
+              target={monthGoalTarget}
+              color="#0B3B6E"
+              unit={t('staff.hoursShort')}
+              loading={goalQuery.isLoading}
+            />
+          </div>
+        </section>
+
+        {showShiftFinancialOverview && financial.isError && (
+          <ErrorState
+            title={t('staff.financialDataUnavailable')}
+            description={errorMessage(financial.error, t)}
+            onRetry={financial.refetch}
+          />
+        )}
+        {showShiftFinancialOverview && financial.isSuccess && !financialDataConsistent && (
+          <ErrorState
+            title={t('staff.financialDataOutOfSync')}
+            description={t('staff.financialDataOutOfSyncHint')}
+            onRetry={financial.refetch}
+          />
+        )}
+
+        {canViewSelectedDate && !showShiftFinancialOverview && (
+          <div className="rounded-[14px] border border-blue-200 bg-blue-50 px-3 py-2 font-tajawal text-sm leading-6 text-blue-950">
+            {t('staff.otherDayFinancialsHint', {
+              viewDate: selectedDate,
+              shiftDate: shiftBusinessDate ?? today,
+            })}
+            {shiftBusinessDate && (
+              <Button className="ms-2" variant="ghost" onClick={() => setDay(shiftBusinessDate)}>
+                {t('staff.useActiveShiftDate')}
+              </Button>
             )}
-            {bookingGroups.cancelled.length > 0 && (
-              <details className="rounded-xl border border-navy/10 bg-white p-2">
-                <summary className="cursor-pointer font-cairo text-sm font-bold text-navy/60">
-                  {t('staff.cancelledBookings', { count: bookingGroups.cancelled.length })}
-                </summary>
-                <div className="mt-2 space-y-2">
-                  {bookingGroups.cancelled.map((appointment) => (
-                    <BookingRow
-                      key={appointment.id}
-                      appointment={appointment}
-                      locale={locale}
-                      t={t}
-                      canRecordIncome={false}
-                      onRecordPayment={() => {}}
-                      onRecordSale={() => {}}
-                      userId={currentUser?.id}
-                      canEditDay={false}
-                      onEditIncome={() => {}}
-                    />
-                  ))}
-                </div>
-              </details>
+            {canViewSelectedDate && !canEditSelectedDate && (
+              <ReadOnlyDayBanner date={selectedDate} />
             )}
           </div>
         )}
-      </section>
 
-      <BottomDock
-        totalBalanceLabel={t('staff.totalBalance')}
-        totalBalanceValue={financialDataConsistent ? money(financialData.totalBalance ?? 0) : '—'}
-        handoverLabel={t('staff.handoverInTransit')}
-        handoverValue={financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'}
-        actions={[
-          {
-            key: shift ? 'close' : 'open',
-            label: shift ? t('staff.closeShift') : t('staff.openShift'),
-            icon: WalletCards,
-            variant: 'primary',
-            onClick: shift ? startClosing : () => setOpenShiftModal(true),
-            disabled: shifts.isLoading,
-          },
-          {
-            key: 'shop',
-            label: t('staff.addShopSale'),
-            icon: ShoppingBag,
-            variant: 'secondary',
-            onClick: openStandaloneSale,
-            disabled: !canRecordIncome || selectedDate !== shiftBusinessDate,
-          },
-          {
-            key: 'expense',
-            label: t('staff.addExpense'),
-            icon: ReceiptText,
-            variant: 'secondary',
-            onClick: () => setExpenseOpen(true),
-            disabled:
-              !shift ||
-              selectedDate !== shiftBusinessDate ||
-              permissions?.['expense.create'] === false,
-          },
-          {
-            key: 'handover',
-            label: t('staff.cashHandover'),
-            icon: Banknote,
-            variant: 'secondary',
-            to: '/app/staff/handover',
-          },
-        ]}
-      />
+        <section className="space-y-2.5" aria-label={t('staff.bookingDateFilter')}>
+          <div className="flex items-stretch gap-2">
+            <button
+              type="button"
+              onClick={() => canGoPrevious && setDay(addDays(selectedDate, -1))}
+              disabled={!canGoPrevious}
+              className="flex size-12 shrink-0 items-center justify-center rounded-[14px] border border-[#D5DDE7] bg-white text-[#002346] outline-none transition hover:border-[#01649B] focus-visible:ring-2 focus-visible:ring-[#01649B] disabled:opacity-40"
+              aria-label={t('staff.previousDay')}
+            >
+              <ChevronLeft className="size-5 rtl:rotate-180" strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <SegmentedDateFilter
+              items={filterItems}
+              activeId={activeFilter}
+              onChange={onFilterChange}
+              ariaLabel={t('staff.bookingDateFilter')}
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
+            <CourtPill active={court === ''} onClick={() => setCourt('')}>
+              {t('common.all')}
+            </CourtPill>
+            {(courtOptions.data?.items ?? []).map((item) => (
+              <CourtPill
+                key={item.id}
+                active={court === String(item.id)}
+                onClick={() => setCourt(String(item.id))}
+              >
+                {item.name}
+              </CourtPill>
+            ))}
+          </div>
+        </section>
+
+        <section aria-label={t('staff.todayAppointments')}>
+          {!canViewSelectedDate ? (
+            <div className="rounded-[18px] border border-amber-200 bg-[#FDF0E2] p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-amber-300 text-amber-800">
+                  <LockKeyhole className="size-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-inter text-sm font-extrabold text-[#8F460A]">
+                    {t('staff.pastDayLocked')}
+                  </h3>
+                  <p className="mt-1 font-tajawal text-xs leading-5 text-amber-900">
+                    {t('staff.pastDayLockedHint')}
+                  </p>
+                  {selectedDateRequest?.status === 'PENDING' ? (
+                    <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-cairo text-xs font-bold text-amber-900">
+                      {t('staff.accessRequestPending')}
+                    </p>
+                  ) : !requestFormOpen ? (
+                    <Button className="mt-2" onClick={() => setRequestFormOpen(true)}>
+                      {t('staff.requestPastDayAccess')}
+                    </Button>
+                  ) : (
+                    <form className="mt-2 space-y-2" onSubmit={submitDateAccessRequest}>
+                      <textarea
+                        value={requestReason}
+                        onChange={(event) => setRequestReason(event.target.value)}
+                        minLength={5}
+                        maxLength={500}
+                        required
+                        rows={2}
+                        className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 font-tajawal text-sm text-navy"
+                        placeholder={t('staff.accessRequestReasonPlaceholder')}
+                      />
+                      {dateAccessRequestState.error && (
+                        <p className="font-tajawal text-sm text-red-700" role="alert">
+                          {errorMessage(dateAccessRequestState.error, t)}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="submit"
+                          loading={dateAccessRequestState.isLoading}
+                          disabled={requestReason.trim().length < 5}
+                        >
+                          {t('staff.sendAccessRequest')}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setRequestFormOpen(false)}
+                        >
+                          {t('common.cancel')}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : appointmentsLoading ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              {[1, 2, 3, 4, 5, 6].map((item) => (
+                <Skeleton key={item} className="h-28" />
+              ))}
+            </div>
+          ) : appointments.isError ? (
+            <ErrorState
+              title={t('errors.generic')}
+              description={errorMessage(appointments.error, t)}
+              onRetry={appointments.refetch}
+            />
+          ) : !hasAnyBooking ? (
+            <EmptyState
+              title={t('staff.noAppointments')}
+              description={t('staff.noAppointmentsHint')}
+            />
+          ) : (
+            <div className="grid gap-2.5 md:grid-cols-2 xl:gap-3">
+              {bookingGroups.active.map((appointment) => (
+                <BookingRow
+                  key={appointment.id}
+                  appointment={appointment}
+                  locale={locale}
+                  t={t}
+                  canRecordIncome={canRecordIncome}
+                  onRecordPayment={() => setPaymentAppointment(appointment)}
+                  onRecordSale={() => openLinkedSale(appointment)}
+                  userId={currentUser?.id}
+                  canEditDay={canEditSelectedDate}
+                  onEditIncome={setEditingIncome}
+                />
+              ))}
+              {bookingGroups.paid.length > 0 && (
+                <details className="rounded-[16px] border border-dashed border-[#A9C98A] bg-[#F7FBF1] p-3 md:col-span-2">
+                  <summary className="cursor-pointer font-inter text-sm font-semibold text-[#3E6B12]">
+                    {t('staff.paidBookings', { count: bookingGroups.paid.length })}
+                  </summary>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {bookingGroups.paid.map((appointment) => (
+                      <BookingRow
+                        key={appointment.id}
+                        appointment={appointment}
+                        locale={locale}
+                        t={t}
+                        canRecordIncome={canRecordIncome}
+                        onRecordPayment={() => setPaymentAppointment(appointment)}
+                        onRecordSale={() => openLinkedSale(appointment)}
+                        userId={currentUser?.id}
+                        canEditDay={canEditSelectedDate}
+                        onEditIncome={setEditingIncome}
+                      />
+                    ))}
+                  </div>
+                </details>
+              )}
+              {bookingGroups.cancelled.length > 0 && (
+                <details className="rounded-[16px] border border-[#E2E8F0] bg-white p-3 md:col-span-2">
+                  <summary className="cursor-pointer font-inter text-sm font-semibold text-[#4A5A70]">
+                    {t('staff.cancelledBookings', { count: bookingGroups.cancelled.length })}
+                  </summary>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {bookingGroups.cancelled.map((appointment) => (
+                      <BookingRow
+                        key={appointment.id}
+                        appointment={appointment}
+                        locale={locale}
+                        t={t}
+                        canRecordIncome={false}
+                        onRecordPayment={() => {}}
+                        onRecordSale={() => {}}
+                        userId={currentUser?.id}
+                        canEditDay={false}
+                        onEditIncome={() => {}}
+                      />
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section
+          id="hours-goal"
+          className="rounded-[18px] border border-[#E2E8F0] bg-white p-4 sm:p-5"
+          aria-label={t('staff.hoursGoal')}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-inter text-base font-extrabold text-[#002346]">
+              {t('staff.hoursGoal')}
+            </h2>
+            <span className="font-inter text-xs text-[#4A5A70]">{t('staff.bookedHours')}</span>
+          </div>
+          <div className="mt-4 space-y-4">
+            <GoalBar
+              label={t('staff.goalToday')}
+              achieved={todayGoalAchieved}
+              target={todayGoalTarget}
+              color="#8DC63F"
+              unit={t('staff.hoursShort')}
+            />
+            <GoalBar
+              label={t('staff.goalMonth')}
+              achieved={monthGoalAchieved}
+              target={monthGoalTarget}
+              color="#0B3B6E"
+              unit={t('staff.hoursShort')}
+            />
+          </div>
+        </section>
+
+        <BottomDock
+          title={t('staff.myShift')}
+          totalBalanceLabel={t('staff.totalBalance')}
+          totalBalanceValue={financialDataConsistent ? money(financialData.totalBalance ?? 0) : '—'}
+          handoverLabel={t('staff.handoverInTransit')}
+          handoverValue={
+            financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'
+          }
+          actions={[
+            {
+              key: shift ? 'close' : 'open',
+              label: shift ? t('staff.closeShift') : t('staff.openShift'),
+              icon: LockKeyhole,
+              variant: 'primary',
+              onClick: shift ? startClosing : () => setOpenShiftModal(true),
+              disabled: shifts.isLoading,
+            },
+            {
+              key: 'shop',
+              label: t('staff.shopSale'),
+              icon: ShoppingBag,
+              variant: 'secondary',
+              onClick: openStandaloneSale,
+              disabled: !canRecordIncome || selectedDate !== shiftBusinessDate,
+            },
+            {
+              key: 'expense',
+              label: t('staff.expense'),
+              icon: ReceiptText,
+              variant: 'secondary',
+              onClick: () => setExpenseOpen(true),
+              disabled:
+                !shift ||
+                selectedDate !== shiftBusinessDate ||
+                permissions?.['expense.create'] === false,
+            },
+            {
+              key: 'handover',
+              label: t('staff.cashHandover'),
+              icon: Banknote,
+              variant: 'secondary',
+              to: '/app/staff/handover',
+            },
+          ]}
+        />
+      </div>
 
       <EditPaymentModal
         income={editingIncome}
@@ -694,9 +758,10 @@ export default function StaffHomePage() {
 
       <Modal
         open={closingOpen}
+        screen
+        subtitle={`${currentUser?.name ?? ''} · ${closingDateLabel}`}
         onClose={closeState.isLoading ? undefined : () => setClosingOpen(false)}
-        title={closingResult ? t('staff.shiftResult') : t('staff.closingReviewTitle')}
-        className="sm:max-w-[94vw] lg:max-w-6xl"
+        title={closingResult ? t('staff.shiftResult') : t('staff.closeShift')}
       >
         {closingResult ? (
           <ClosingResult
@@ -748,7 +813,6 @@ export default function StaffHomePage() {
         ) : summary ? (
           <ClosingReview
             summary={summary}
-            goal={goalData}
             locale={locale}
             t={t}
             note={closeNote}
@@ -759,6 +823,13 @@ export default function StaffHomePage() {
             onSubmit={submitClose}
             state={closeState}
             error={closeState.error}
+            onReviewUnpaid={() => {
+              setClosingOpen(false);
+              setDay(shiftBusinessDate ?? today);
+              document
+                .getElementById('staff-bookings')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
           />
         ) : (
           <ErrorState
@@ -802,31 +873,81 @@ export default function StaffHomePage() {
 // Staff-only primitives (bigger, readable, but still compact)
 // ---------------------------------------------------------------
 
-function CompactStatCard({ label, value, tone = 'navy', loading, children }) {
-  const toneClass = {
-    navy: 'border-s-navy',
-    green: 'border-s-emerald-600',
-    red: 'border-s-red-600',
-    amber: 'border-s-amber-500',
-    blue: 'border-s-edge',
-  }[tone];
-
+function MoneyChip({ label, value }) {
   return (
     <div
-      className={`min-w-0 rounded-xl border border-navy/10 border-s-[4px] bg-white p-2.5 shadow-card sm:rounded-2xl sm:p-3 ${toneClass}`}
+      className="min-w-0 rounded-[10px] border px-1.5 py-2 text-center sm:px-2"
+      style={{ backgroundColor: '#EEF2F6', borderColor: '#DCE5EE' }}
     >
-      <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:justify-start">
-        <p className="font-cairo text-xs font-semibold text-navy/60 sm:order-2 sm:mt-1">{label}</p>
-        {loading ? (
-          <Skeleton className="h-5 w-16 sm:w-24" />
-        ) : (
-          <p className="break-words font-cairo text-sm font-black leading-tight tabular-nums text-navy sm:order-1 sm:text-base">
-            {value ?? '—'}
-          </p>
-        )}
-      </div>
-      {children && <div className="mt-1.5 w-full">{children}</div>}
+      <p className="truncate font-inter text-[10px] text-[#4A5A70] sm:text-[11px]">{label}</p>
+      <p className="mt-0.5 truncate font-inter text-xs font-bold text-[#0E1B2B] tabular-nums sm:text-sm">
+        {value}
+      </p>
     </div>
+  );
+}
+
+function GoalRing({ label, achieved, target, color, unit, loading }) {
+  const progress = target > 0 ? Math.min(100, Math.max(0, (achieved / target) * 100)) : 0;
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <div
+        className="relative size-9 shrink-0 rounded-full"
+        style={{ background: `conic-gradient(${color} ${progress}%, #E6EBF2 ${progress}% 100%)` }}
+        aria-hidden="true"
+      >
+        <span className="absolute inset-[5px] rounded-full bg-white" />
+      </div>
+      <div className="min-w-0 leading-tight">
+        <p className="truncate font-inter text-[10px] text-[#4A5A70] sm:text-xs">{label}</p>
+        <p className="mt-0.5 truncate font-inter text-xs font-extrabold text-[#002346] tabular-nums sm:text-sm">
+          {loading
+            ? '—'
+            : `${Number(achieved ?? 0).toFixed(1)} / ${Number(target ?? 0).toFixed(1)} ${unit}`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function GoalBar({ label, achieved, target, color, unit }) {
+  const percentage = target > 0 ? Math.min(100, Math.max(0, (achieved / target) * 100)) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 font-inter text-xs sm:text-sm">
+        <span className="font-semibold text-[#33435A]">{label}</span>
+        <span className="shrink-0 text-[#4A5A70] tabular-nums">
+          <b className="font-extrabold text-[#002346]">
+            {Number(achieved ?? 0).toFixed(1)} {unit}
+          </b>
+          {' / '}
+          {Number(target ?? 0).toFixed(1)} {unit}
+        </span>
+      </div>
+      <div className="mt-2 h-[10px] overflow-hidden rounded-full bg-[#E6EBF2]">
+        <div
+          className="h-full rounded-full transition-[width]"
+          style={{ width: `${percentage}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CourtPill({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`min-h-9 shrink-0 rounded-full border px-4 font-inter text-xs font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#01649B] sm:text-sm ${
+        active
+          ? 'border-[#002346] bg-[#002346] text-white'
+          : 'border-[#CDD6E2] bg-white text-[#33435A] hover:border-[#01649B]'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -845,78 +966,87 @@ function BookingRow({
   const style = paymentStatusStyle(status, { context: 'card' });
   const due = Math.max(0, appointment.payment?.due ?? 0);
   const rewardHours = Number(appointment.reward?.hoursUsed ?? 0);
+  const phone = appointment.customer?.phone;
+  const phoneHref = phone ? `tel:${String(phone).replace(/[^+\d]/g, '')}` : null;
 
   return (
-    <div
-      className={`rounded-xl border px-3 py-2 shadow-card ${style.border}`}
+    <article
+      className={`min-w-0 rounded-[16px] border border-[#E2E8F0] bg-white p-3 shadow-[0_2px_8px_rgba(0,35,70,0.035)] sm:p-3.5 ${style.border}`}
       style={{ backgroundColor: style.background }}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 items-start justify-between gap-2.5">
         <div className="min-w-0 flex-1">
-          {/* Name first, then Court Name */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate font-cairo text-sm font-bold text-navy">
-              {appointment.customer?.name || t('staff.walkIn')}
-            </p>
-            <span
-              className="shrink-0 truncate rounded-md bg-navy/10 px-1.5 py-0.5 font-cairo text-[10px] font-bold text-navy/70 max-w-[120px]"
-              title={appointment.court?.staffName || appointment.court?.name}
-            >
-              {appointment.court?.staffName || appointment.court?.name || ''}
-            </span>
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-tajawal text-[11px] text-navy/60">
-            <span className="tabular-nums">
+          <p className="truncate font-inter text-[15px] font-bold leading-5 text-[#0E1B2B] sm:text-base">
+            {appointment.customer?.name || t('staff.walkIn')}
+          </p>
+          <p className="mt-0.5 truncate font-inter text-xs leading-5 text-[#4A5A70] sm:text-[13px]">
+            <span dir="ltr" className="tabular-nums">
               {formatTime(appointment.startsAt, locale)}–{formatTime(appointment.endsAt, locale)}
             </span>
-            {appointment.customer?.phone && (
-              <span dir="ltr" className="tabular-nums">
-                {appointment.customer.phone}
-              </span>
-            )}
-            {rewardHours > 0 && (
-              <span className="shrink-0 rounded-md bg-ball/25 px-1 py-0.5 font-cairo text-[9px] font-bold text-navy">
-                {t('staff.rewardHoursBadge', { hours: rewardHours })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-0.5 text-end">
-          {due > 0 && (
-            <p className="font-cairo text-sm font-black tabular-nums text-navy">
-              {formatEgpWithCurrency(due, locale)}
-            </p>
+            {appointment.court?.name || appointment.court?.staffName
+              ? ` · ${appointment.court.name || appointment.court.staffName}`
+              : ''}
+          </p>
+          {rewardHours > 0 && (
+            <span className="mt-1 inline-flex rounded-md bg-[#EAF3DE] px-2 py-1 font-inter text-[10px] font-bold text-[#315A0B]">
+              {t('staff.rewardHoursBadge', { hours: rewardHours })}
+            </span>
           )}
-          <span className="rounded-md bg-navy/5 px-1.5 py-0.5 font-cairo text-[10px] font-bold text-navy/70">
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1 text-end">
+          <p className="font-inter text-[15px] font-extrabold leading-5 text-[#002346] tabular-nums sm:text-base">
+            {formatEgpWithCurrency(due > 0 ? due : (appointment.payment?.expected ?? 0), locale)}
+          </p>
+          <span
+            className={`rounded-full px-2 py-0.5 font-inter text-[10px] font-bold ${
+              status === 'PAID'
+                ? 'bg-[#EAF6DF] text-[#3E6B12]'
+                : status === 'ON_ACCOUNT'
+                  ? 'bg-[#E6EEF8] text-[#0B3B6E]'
+                  : status === 'PARTIAL'
+                    ? 'bg-[#FFF4D6] text-[#80520A]'
+                    : 'bg-[#FDF0E2] text-[#8F460A]'
+            }`}
+          >
             {t(`payment.${status}`)}
           </span>
         </div>
       </div>
+
       {appointment.note && (
-        <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[11px] font-tajawal text-amber-900 border border-amber-100 truncate">
-          <span className="font-bold mr-1">{t('staff.note') || 'Note'}:</span>
+        <p className="mt-2 truncate rounded-[8px] border border-[#D9E5F3] bg-[#EAF1F9] px-2.5 py-1.5 font-inter text-[11px] font-medium text-[#174B7C]">
           {appointment.note}
-        </div>
+        </p>
       )}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {due > 0 && (
-          <button
-            type="button"
-            onClick={onRecordPayment}
-            disabled={!canRecordIncome}
-            className="min-h-8 rounded-lg bg-navy px-2.5 py-1 font-cairo text-xs font-bold text-white outline-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ball"
+
+      <div className="mt-3 flex min-w-0 items-center gap-2">
+        {phoneHref && (
+          <a
+            href={phoneHref}
+            className="flex size-11 shrink-0 items-center justify-center rounded-[12px] border border-[#D5DDE7] bg-white text-[#0B3B6E] outline-none transition hover:border-[#01649B] focus-visible:ring-2 focus-visible:ring-[#01649B]"
+            aria-label={t('staff.callPlayer')}
           >
-            {t('staff.addPayment')}
-          </button>
+            <Phone className="size-[18px]" strokeWidth={2} aria-hidden="true" />
+          </a>
         )}
         <button
           type="button"
           onClick={onRecordSale}
           disabled={!canRecordIncome}
-          className="min-h-8 rounded-lg bg-ball px-2.5 py-1 font-cairo text-xs font-bold text-navy outline-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-navy"
+          className="min-h-11 min-w-0 flex-1 rounded-[12px] border border-[#D5DDE7] bg-white px-2 font-inter text-xs font-semibold text-[#002346] outline-none transition hover:border-[#01649B] focus-visible:ring-2 focus-visible:ring-[#01649B] disabled:cursor-not-allowed disabled:opacity-45 sm:text-sm"
         >
           {t('staff.addShopSales')}
         </button>
+        {due > 0 && (
+          <button
+            type="button"
+            onClick={onRecordPayment}
+            disabled={!canRecordIncome}
+            className="min-h-11 min-w-0 flex-[1.25] rounded-[12px] bg-[#8DC63F] px-2 font-inter text-xs font-bold text-[#0E2A05] outline-none transition hover:bg-[#9AD34D] focus-visible:ring-2 focus-visible:ring-[#002346] disabled:cursor-not-allowed disabled:opacity-45 sm:text-sm"
+          >
+            {t('staff.recordPayment')}
+          </button>
+        )}
       </div>
       <BookingPaymentLines
         incomes={appointment.incomes}
@@ -926,7 +1056,7 @@ function BookingRow({
         t={t}
         onEdit={onEditIncome}
       />
-    </div>
+    </article>
   );
 }
 
@@ -992,7 +1122,6 @@ function UnpaidBanner({ summary, money, t }) {
 
 function ClosingReview({
   summary,
-  goal,
   locale,
   t,
   note,
@@ -1003,218 +1132,223 @@ function ClosingReview({
   onSubmit,
   state,
   error,
+  onReviewUnpaid,
 }) {
   const moneyFmt = (amount) => formatEgpWithCurrency(amount ?? 0, locale);
-  const methods = [
-    ['CASH', t('method.CASH')],
-    ['VISA', t('method.VISA')],
-    ['INSTAPAY', t('method.INSTAPAY')],
-  ];
   const now = Date.now();
   const unpaidSummary = summarizeUnpaid(summary.bookings ?? [], now);
-  const sortedBookings = [...(summary.bookings ?? [])].sort((a, b) => {
-    const rank = (row) => {
-      const status = getClosingRowPaymentStatus(row);
-      if (status === 'UNPAID' || status === 'PARTIAL') return 0;
-      return 1;
-    };
-    const diff = rank(a) - rank(b);
-    if (diff !== 0) return diff;
-    return new Date(a.startsAt) - new Date(b.startsAt);
-  });
+  const expectedCash = summary.cash?.expectedCash ?? 0;
+  // This is the booking/payment reconciliation difference, not a physical cash count.
+  const closingDifference = summary.excel?.difference ?? 0;
+  const playedMinutes = (summary.bookings ?? []).reduce((total, booking) => {
+    const start = new Date(booking.startsAt).getTime();
+    const end = new Date(booking.endsAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return total;
+    return total + Math.max(0, Math.round((Math.min(now, end) - start) / 60_000));
+  }, 0);
+  const playedHours = playedMinutes / 60;
+  const closeReasonValid = !requiresCloseReason || closeReason.trim().length >= 3;
 
-  const expected = summary.totals?.totalDay ?? 0;
-  const collected = summary.totals?.collected ?? 0;
-  const fullyPaid = collected === expected;
+  const summaryRows = [
+    [t('staff.closingCash'), moneyFmt(summary.byMethod?.CASH)],
+    [t('staff.closingVisa'), moneyFmt(summary.byMethod?.VISA)],
+    [t('staff.closingInstapay'), moneyFmt(summary.byMethod?.INSTAPAY)],
+    [t('staff.closingShopSales'), moneyFmt(summary.shop?.total)],
+    [t('staff.closingExpenses'), `− ${moneyFmt(summary.expenses?.total)}`],
+    [t('staff.closingHoursPlayed'), `${playedHours.toFixed(1)} ${t('staff.hoursShort')}`],
+  ];
 
   return (
-    <div className="space-y-5">
-      <div
-        className={`rounded-xl border p-4 ${fullyPaid ? 'border-emerald-300 bg-emerald-50' : 'border-red-300 bg-red-50'}`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-cairo text-sm font-black text-navy">{t('staff.closingPaidTitle')}</p>
-          <Badge tone={fullyPaid ? 'success' : 'danger'}>
-            {fullyPaid ? t('staff.closingBalanced') : t('staff.closingGap')}
-          </Badge>
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-          {methods.map(([m, label]) => (
-            <div key={m} className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
-              <p className="font-tajawal text-[10px] text-navy/55">{label}</p>
-              <p className="font-cairo text-sm font-black text-navy">
-                {moneyFmt(summary.byMethod?.[m])}
+    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden font-inter text-[#0E1B2B] sm:space-y-5">
+      <ol className="grid grid-cols-3 gap-2" aria-label={t('staff.closingProgress')}>
+        <ClosingStep number="1" label={t('staff.closingStepCheck')} active />
+        <ClosingStep number="2" label={t('staff.closingStepCountCash')} active />
+        <ClosingStep number="3" label={t('staff.closingStepHandover')} />
+      </ol>
+
+      {unpaidSummary.unpaid > 0 && (
+        <section className="rounded-[20px] border border-[#F5C78E] bg-[#FDF0E2] p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className="mt-0.5 size-7 shrink-0 text-[#9A4C0B]"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="font-inter text-base font-extrabold leading-6 text-[#8F460A] sm:text-lg">
+                {t('staff.closingUnpaidCount', {
+                  count: unpaidSummary.unpaid,
+                  amount: moneyFmt(unpaidSummary.unpaidDue),
+                })}
               </p>
+              <p className="mt-0.5 font-inter text-sm leading-5 text-[#9A4C0B]">
+                {t('staff.closingUnpaidHint')}
+              </p>
+              <button
+                type="button"
+                onClick={onReviewUnpaid}
+                className="mt-2 inline-flex min-h-10 items-center font-inter text-sm font-bold text-[#8F460A] underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-[#01649B]"
+              >
+                {t('staff.closingReviewUnpaid')} <span aria-hidden="true">›</span>
+              </button>
             </div>
-          ))}
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
-            <p className="font-tajawal text-[10px] text-navy/55">
-              {t('staff.closingCollectedTotal')}
-            </p>
-            <p className="font-cairo text-sm font-black text-navy">{moneyFmt(collected)}</p>
           </div>
-          <div className="rounded-lg bg-white px-2 py-1 shadow-sm border border-navy/5">
-            <p className="font-tajawal text-[10px] text-navy/55">
-              {t('staff.closingExpectedTotal')}
-            </p>
-            <p className="font-cairo text-sm font-black text-navy">{moneyFmt(expected)}</p>
-          </div>
-        </div>
-        {!fullyPaid && (
-          <p className="mt-2 font-cairo text-xs font-bold text-red-900">
-            {t('staff.closingGapAmount', {
-              amount: moneyFmt(Math.max(0, expected - collected)),
-            })}
-          </p>
-        )}
-      </div>
-
-      {unpaidSummary.unpaid > 0 && <UnpaidBanner summary={unpaidSummary} money={moneyFmt} t={t} />}
-
-      {goal && goal.goalHours != null && (
-        <div className="rounded-xl border border-navy/10 bg-white p-3">
-          <p className="font-cairo text-xs font-bold text-navy/60">{t('staff.monthlyTarget')}</p>
-          <p className="mt-1 font-cairo text-lg font-black text-navy">
-            {goal.achievedToDateHours.toFixed(1)} / {goal.targetToDateHours.toFixed(1)}{' '}
-            {t('staff.hoursShort')}
-            <span
-              className={`ms-2 font-cairo text-sm font-bold ${goal.deltaHours >= 0 ? 'text-emerald-700' : 'text-red-700'}`}
-            >
-              {goal.deltaHours >= 0 ? '+' : ''}
-              {goal.deltaHours.toFixed(1)}
-            </span>
-          </p>
-        </div>
+        </section>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-navy/10">
-        <table className="min-w-[700px] w-full border-collapse text-start text-xs">
-          <thead className="bg-navy/5 font-cairo text-[10px] text-navy/60">
-            <tr>
-              <th className="px-2 py-2 text-start">{t('staff.booking')}</th>
-              <th className="px-2 py-2 text-end">{t('staff.expected')}</th>
-              <th className="px-2 py-2 text-end">{t('staff.collected')}</th>
-              <th className="px-2 py-2 text-end">{t('staff.due')}</th>
-              <th className="px-2 py-2 text-end">{t('staff.shop')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedBookings.map((booking) => {
-              const rowStyle = paymentStatusStyle(getClosingRowPaymentStatus(booking), {
-                context: isBookingStarted(booking, now) ? 'closing' : 'card',
-              });
-              return (
-                <tr
-                  key={booking.appointmentId}
-                  className="border-t border-navy/8 align-top"
-                  style={{ backgroundColor: rowStyle.background }}
-                >
-                  <td className="px-2 py-2">
-                    <p className="font-cairo text-xs font-bold text-navy">
-                      {booking.customerName || t('staff.walkIn')}
-                    </p>
-                    <p className="font-tajawal text-[10px] text-navy/55">
-                      {booking.courtName} · {formatTime(booking.startsAt, locale)}–
-                      {formatTime(booking.endsAt, locale)}
-                    </p>
-                  </td>
-                  <td className="px-2 py-2 text-end font-cairo text-xs">
-                    {moneyFmt(booking.expected)}
-                  </td>
-                  <td className="px-2 py-2 text-end font-cairo text-xs">
-                    {moneyFmt(booking.collected)}
-                  </td>
-                  <td className="px-2 py-2 text-end font-cairo text-xs font-bold">
-                    {moneyFmt(Math.max(0, booking.due ?? 0))}
-                  </td>
-                  <td className="px-2 py-2 text-end font-cairo text-xs">
-                    {moneyFmt(booking.linkedShopSales)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-navy/10 bg-white p-3">
-          <p className="font-cairo text-xs font-extrabold text-navy">{t('staff.courtBreakdown')}</p>
-          <div className="mt-2 space-y-1 text-xs">
-            {(summary.courts ?? []).map((court) => (
-              <div key={court.courtId} className="flex items-center justify-between gap-2">
-                <span className="font-cairo text-xs">
-                  {court.courtId} · {court.bookings} {t('staff.bookings')}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-5">
+        <section className="min-w-0 rounded-[22px] border border-[#E2E8F0] bg-white p-4 sm:p-6">
+          <h2 className="font-inter text-xl font-extrabold text-[#002346]">
+            {t('staff.closingStepSummary')}
+          </h2>
+          <div className="mt-4 divide-y divide-[#E7ECF2]">
+            {summaryRows.map(([label, value]) => (
+              <div
+                key={label}
+                className="grid min-h-[48px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2.5"
+              >
+                <span className="min-w-0 break-words font-inter text-sm text-[#4A5A70] sm:text-base">
+                  {label}
                 </span>
-                <span className="font-cairo text-xs">{moneyFmt(court.expected)}</span>
+                <span className="shrink-0 font-inter text-sm font-bold text-[#0E1B2B] tabular-nums sm:text-base">
+                  {value}
+                </span>
               </div>
             ))}
-            {(summary.courts ?? []).length === 0 && (
-              <p className="text-navy/50">{t('staff.noCourtActivity')}</p>
-            )}
+            <div className="grid min-h-[54px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pt-3">
+              <span className="min-w-0 break-words font-inter text-sm font-extrabold text-[#002346] sm:text-base">
+                {t('staff.closingExpectedCash')}
+              </span>
+              <span className="shrink-0 font-inter text-base font-extrabold text-[#002346] tabular-nums sm:text-lg">
+                {moneyFmt(expectedCash)}
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="rounded-xl border border-navy/10 bg-white p-3">
-          <p className="font-cairo text-xs font-extrabold text-navy">
-            {t('staff.shopAndOperatingExpenses')}
-          </p>
-          <div className="mt-2 space-y-1 text-xs">
-            <Row
-              label={t('staff.shopSalesInBookings')}
-              value={moneyFmt(summary.shop?.inBookings)}
-            />
-            <Row label={t('staff.shopSalesOutside')} value={moneyFmt(summary.shop?.outside)} />
-            <Row label={t('staff.expenses')} value={moneyFmt(summary.expenses?.total)} />
-            <Row
-              label={t('staff.totalExpenses')}
-              value={moneyFmt(summary.expenses?.total)}
-              strong
-            />
-          </div>
-        </div>
-      </div>
+        </section>
 
-      <form className="space-y-3 border-t border-navy/10 pt-4" onSubmit={onSubmit}>
-        {requiresCloseReason && (
-          <label className="block">
-            <span className="mb-1 block font-cairo text-xs font-semibold">
-              {t('staff.closeReasonRequired')}
-            </span>
-            <textarea
-              rows={2}
-              value={closeReason}
-              onChange={(event) => setCloseReason(event.target.value)}
-              placeholder={t('staff.closeReasonPlaceholder')}
-              className="w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 font-tajawal text-xs text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
-            />
-          </label>
-        )}
-        <label className="block">
-          <span className="mb-1 block font-cairo text-xs font-semibold">
-            {t('common.noteOptional')}
-          </span>
-          <textarea
-            rows={2}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder={t('staff.closeNotePlaceholder')}
-            className="w-full rounded-xl border border-navy/10 bg-white px-3 py-2 font-tajawal text-xs text-navy outline-none focus:border-edge focus:ring-2 focus:ring-edge/15"
-          />
-        </label>
-        {error && (
-          <p className="font-tajawal text-sm text-red-700" role="alert">
-            {errorMessage(error, t)}
-          </p>
-        )}
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <Button type="submit" loading={state.isLoading}>
-            {t('staff.confirmClose')}
-          </Button>
-        </div>
-      </form>
+        <form className="min-w-0 space-y-4" onSubmit={onSubmit}>
+          <section className="min-w-0 rounded-[22px] border border-[#E2E8F0] bg-white p-4 sm:p-6">
+            <h2 className="font-inter text-xl font-extrabold text-[#002346]">
+              {t('staff.closingStepCountHeading')}
+            </h2>
+            <label className="mt-4 block">
+              <span className="mb-2 block font-inter text-sm font-semibold text-[#4A5A70] sm:text-base">
+                {t('staff.closingCashNow')}
+              </span>
+              <span className="flex min-h-[72px] items-center gap-3 rounded-[18px] border-[2px] border-[#174B7C] bg-white px-4 sm:min-h-[82px] sm:px-5">
+                <span className="shrink-0 font-inter text-sm font-bold text-[#4A5A70] sm:text-base">
+                  EGP
+                </span>
+                <input
+                  type="text"
+                  value={formatEgp(expectedCash, locale)}
+                  readOnly
+                  aria-readonly="true"
+                  className="min-w-0 flex-1 bg-transparent font-inter text-xl font-extrabold text-[#002346] outline-none sm:text-2xl"
+                />
+                <span className="rounded-full bg-[#EAF1F9] px-2.5 py-1 font-inter text-[10px] font-bold text-[#174B7C] sm:text-xs">
+                  {t('staff.viewOnly')}
+                </span>
+              </span>
+              <span className="mt-2 block font-inter text-xs leading-5 text-[#4A5A70]">
+                {t('staff.closingCashReadOnlyHint')}
+              </span>
+            </label>
+
+            <div
+              className={`mt-4 flex flex-wrap items-center justify-between gap-2 rounded-[14px] px-3.5 py-3 sm:px-4 ${
+                closingDifference === 0
+                  ? 'bg-[#DCFCE7] text-[#166534]'
+                  : 'bg-[#FEE2E2] text-[#991B1B]'
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="font-inter text-sm font-bold">{t('staff.closingDifference')}</span>
+              <span className="min-w-0 text-end font-inter text-sm font-bold tabular-nums">
+                {moneyFmt(closingDifference)}
+              </span>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block font-inter text-sm font-semibold text-[#4A5A70]">
+                {t('common.noteOptional')}
+              </span>
+              <textarea
+                rows={3}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder={t('staff.closeNotePlaceholder')}
+                className="min-h-[88px] w-full resize-y rounded-[16px] border border-[#D5DDE7] bg-white px-4 py-3 font-inter text-sm text-[#0E1B2B] outline-none placeholder:text-[#8593A6] focus:border-[#01649B] focus:ring-2 focus:ring-[#01649B]/15"
+              />
+            </label>
+
+            {requiresCloseReason && (
+              <label className="mt-4 block">
+                <span className="mb-2 block font-inter text-sm font-semibold text-[#8F460A]">
+                  {t('staff.closeReasonRequired')}
+                </span>
+                <textarea
+                  rows={2}
+                  minLength={3}
+                  required
+                  value={closeReason}
+                  onChange={(event) => setCloseReason(event.target.value)}
+                  placeholder={t('staff.closeReasonPlaceholder')}
+                  className="w-full rounded-[16px] border border-[#F1C58B] bg-[#FFFBF5] px-4 py-3 font-inter text-sm text-[#0E1B2B] outline-none placeholder:text-[#9A7A5D] focus:border-[#01649B] focus:ring-2 focus:ring-[#01649B]/15"
+                />
+              </label>
+            )}
+            {error && (
+              <p className="mt-3 font-inter text-sm text-red-700" role="alert">
+                {errorMessage(error, t)}
+              </p>
+            )}
+          </section>
+
+          <section className="min-w-0 rounded-[22px] border border-[#E2E8F0] bg-white p-4 sm:p-6">
+            <h2 className="font-inter text-xl font-extrabold text-[#002346]">
+              {t('staff.closingStepHandoverHeading')}
+            </h2>
+            <p className="mt-4 font-inter text-sm font-semibold text-[#4A5A70]">
+              {t('staff.closingGiveCashTo')}
+            </p>
+            <Link
+              to="/app/staff/handover"
+              className="mt-2 flex min-h-[60px] items-center justify-between gap-3 rounded-[16px] border border-[#D5DDE7] bg-white px-4 py-3 font-inter text-sm font-bold text-[#002346] outline-none transition hover:border-[#01649B] focus-visible:ring-2 focus-visible:ring-[#01649B]"
+            >
+              <span>{t('staff.closingOpenHandover')}</span>
+              <ChevronDown className="size-5 shrink-0" aria-hidden="true" />
+            </Link>
+            <p className="mt-3 font-inter text-xs leading-5 text-[#4A5A70]">
+              {t('staff.closingHandoverSeparateHint')}
+            </p>
+          </section>
+
+          <button
+            type="submit"
+            disabled={state.isLoading || !closeReasonValid}
+            className="flex min-h-[64px] w-full items-center justify-center gap-3 rounded-[20px] bg-[#8DC63F] px-5 py-4 font-inter text-base font-extrabold text-[#0E2A05] outline-none transition hover:bg-[#9AD34D] focus-visible:ring-2 focus-visible:ring-[#002346] disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
+          >
+            <LockKeyhole className="size-5" aria-hidden="true" />
+            {state.isLoading ? t('common.loading') : t('staff.closeShift')}
+          </button>
+        </form>
+      </div>
     </div>
+  );
+}
+
+function ClosingStep({ number, label, active = false }) {
+  return (
+    <li className="min-w-0 text-center">
+      <span className={`block h-[9px] rounded-full ${active ? 'bg-[#8DC63F]' : 'bg-[#D5DDE7]'}`} />
+      <span
+        className={`mt-2 block truncate font-inter text-sm font-bold sm:text-base ${active ? 'text-[#3E6B12]' : 'text-[#4A5A70]'}`}
+      >
+        {number} {label}
+      </span>
+    </li>
   );
 }
 
@@ -1243,9 +1377,9 @@ function ClosingResult({ result, locale, t, onDone }) {
   const rowStyle = paymentStatusStyle('UNPAID', { context: 'closing' });
 
   return (
-    <div className="space-y-4">
-      <Card dark className="border-navy bg-navy p-4 text-white shadow-card-dark">
-        <div className="flex items-center gap-3">
+    <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+      <Card dark className="min-w-0 max-w-full border-navy bg-navy p-4 text-white shadow-card-dark">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-ball text-ball">
             {owed ? (
               <AlertTriangle className="size-5" aria-hidden="true" />
@@ -1253,11 +1387,11 @@ function ClosingResult({ result, locale, t, onDone }) {
               <CheckCircle2 className="size-5" aria-hidden="true" />
             )}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <Badge tone={owed ? 'danger' : 'success'}>
               {owed ? t('staff.closingNeedsAttention') : t('staff.closingAllClear')}
             </Badge>
-            <h3 className="mt-1 font-cairo text-base font-black">
+            <h3 className="mt-1 break-words font-cairo text-base font-black">
               {owed
                 ? t('staff.closingUnpaidHeadline', {
                     unpaid: bookings.unpaid,
@@ -1268,7 +1402,7 @@ function ClosingResult({ result, locale, t, onDone }) {
             </h3>
             <p className="mt-1 font-tajawal text-xs text-white/65">
               {variance === 0
-                ? t('staff.closingDrawerBalanced')
+                ? t('staff.closingCashSystemCalculated')
                 : `${t('staff.closingDrawerLabel')}: ${positive ? t('staff.over') : t('staff.short')} ${money(Math.abs(variance))}`}
             </p>
             {result.shift?.closedLate && (
@@ -1298,7 +1432,7 @@ function ClosingResult({ result, locale, t, onDone }) {
                     {item.reason === 'IN_PROGRESS' ? ` · ${t('staff.closingInProgress')}` : ''}
                   </p>
                 </div>
-                <span className="font-cairo font-black">{money(item.due)}</span>
+                <span className="shrink-0 font-cairo font-black">{money(item.due)}</span>
               </div>
             ))}
           </div>

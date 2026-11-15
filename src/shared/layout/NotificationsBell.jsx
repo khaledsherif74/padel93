@@ -1,6 +1,7 @@
 import { Bell, CheckCheck, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import {
   useGetNotificationsQuery,
@@ -9,9 +10,12 @@ import {
 } from '../../app/api';
 import { formatDateTime } from '../lib/date';
 import Button from '../ui/Button';
+import { selectRole } from '../../features/auth/authSelectors';
 
 export default function NotificationsBell() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const role = useSelector(selectRole);
   const [open, setOpen] = useState(false);
   const [markRead] = useMarkNotificationReadMutation();
   const [markAll] = useMarkAllNotificationsReadMutation();
@@ -34,6 +38,17 @@ export default function NotificationsBell() {
   const unreadCount = data?.unreadCount ?? 0;
   const items = data?.items ?? [];
   const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
+  const handoverPath = role === 'STAFF' ? '/app/staff/handover' : '/app/accountant/handovers';
+
+  async function openNotification(item) {
+    try {
+      await markRead(item.id).unwrap();
+    } catch {
+      // Navigation should still be available if marking the notice fails.
+    }
+    setOpen(false);
+    if (String(item.type ?? '').startsWith('TRANSFER_')) navigate(handoverPath);
+  }
 
   return (
     <div className="relative" ref={containerRef}>
@@ -82,14 +97,16 @@ export default function NotificationsBell() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => markRead(item.id)}
+                  onClick={() => openNotification(item)}
                   className="block w-full border-b border-navy/5 px-4 py-4 text-start transition hover:bg-navy/[0.025]"
                 >
                   <div className="flex items-start gap-3">
                     <span className="mt-1.5 size-2 shrink-0 rounded-full bg-ball" />
                     <div className="min-w-0 flex-1">
                       <p className="font-cairo text-sm font-bold">{item.title}</p>
-                      <p className="mt-1 font-tajawal text-sm leading-6 text-navy/65">{item.body}</p>
+                      <p className="mt-1 font-tajawal text-sm leading-6 text-navy/65">
+                        {item.body}
+                      </p>
                       <p className="mt-2 font-tajawal text-[11px] text-navy/40">
                         {formatDateTime(item.createdAt, locale)}
                       </p>

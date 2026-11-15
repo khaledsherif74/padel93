@@ -11,7 +11,8 @@ const active = (request, kinds) =>
   kinds.includes(request.kind ?? 'EDIT');
 
 export function canEditDay({ date, today, shiftBusinessDate, request }) {
-  return date >= today || date === shiftBusinessDate || active(request, ['EDIT']);
+  if (date > today) return false;
+  return date === today || date === shiftBusinessDate || active(request, ['EDIT']);
 }
 
 export function canViewDay({ date, today, viewDays = 3, shiftBusinessDate, request }) {

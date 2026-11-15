@@ -36,7 +36,6 @@ import OwnerBookingsPage from './features/owner/OwnerBookingsPage';
 import OwnerBookingDetailPage from './features/owner/OwnerBookingDetailPage';
 import PaymentFlagsPage from './features/paymentFlags/PaymentFlagsPage';
 import HubPage from './features/hub/HubPage';
-import AttendancePage from './features/attendance/AttendancePage';
 import AttendanceBoardPage from './features/attendance/AttendanceBoardPage';
 import SchedulePage from './features/schedule/SchedulePage';
 
