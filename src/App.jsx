@@ -8,6 +8,7 @@ import RequireAuth from './features/auth/RequireAuth';
 import RoleRoute from './features/auth/RoleRoute';
 import LoginPage from './features/auth/LoginPage';
 import ProfilePage from './features/profile/ProfilePage';
+import StaffProfilePage from './features/profile/StaffProfilePage';
 import AppShell from './shared/layout/AppShell';
 import { NotFound, Unauthorized } from './shared/ui/NotFound';
 import NotificationsPage from './features/staff/NotificationsPage';
@@ -95,6 +96,7 @@ export default function App() {
             <Route element={<RoleRoute roles={['STAFF']} />}>
               <Route path="/app/staff" element={<StaffHomePage />} />
               <Route path="/app/staff/handover" element={<HandoverPage />} />
+              <Route path="/app/staff/profile" element={<StaffProfilePage />} />
               <Route path="/app/staff/*" element={<Navigate to="/app/staff" replace />} />
               {/* R13: STAFF cannot open attendance/schedule in the app */}
               <Route path="/app/attendance" element={<StaffBlocked />} />

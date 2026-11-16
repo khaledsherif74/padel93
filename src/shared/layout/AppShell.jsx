@@ -50,7 +50,7 @@ export default function AppShell() {
           tabIndex={-1}
           className={
             isStaffSection
-              ? 'min-w-0 flex-1 p-0 outline-none'
+              ? 'relative z-10 min-w-0 flex-1 p-0 outline-none'
               : `min-w-0 flex-1 px-3 pt-5 outline-none sm:px-6 lg:px-8 lg:pb-10 lg:pt-7 ${role === 'OWNER' ? 'pb-24' : 'pb-10'}`
           }
         >

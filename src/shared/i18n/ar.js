@@ -153,9 +153,11 @@ const ar = {
       pastDayLocked: 'يوم العمل السابق هذا مقفل',
       pastDayLockedHint:
         'الأيام الأقدم من مدة العرض تحتاج موافقة المالية. جدول اليوم والأيام القادمة متاح.',
-      accessRequestPending: 'طلبك بانتظار المالية.',
+      editAccessShiftHint:
+        'يمكنك طلب صلاحية التعديل دون فتح وردية. بعد الموافقة، يجب فتح وردية قبل تسجيل أي دفعة.',
+      accessRequestPending: 'طلب صلاحية التعديل بانتظار موافقة المالية.',
       accessRequestRejected: 'تم رفض طلبك السابق. يمكنك إرسال طلب جديد بتفاصيل أكثر.',
-      requestPastDayAccess: 'طلب صلاحية من المالية',
+      requestPastDayAccess: 'طلب صلاحية التعديل',
       accessRequestReasonPlaceholder: 'مثال: تصحيح دفعة حجز أو مراجعة سجل ناقص.',
       sendAccessRequest: 'إرسال الطلب',
       closingDataOutOfSync: 'بيانات الإغلاق غير مكتملة',

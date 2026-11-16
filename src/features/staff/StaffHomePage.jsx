@@ -102,6 +102,11 @@ export default function StaffHomePage() {
     dayRequests.find((item) => isActiveGrant(item) && (item.kind ?? 'EDIT') === 'EDIT') ??
     dayRequests.find(isActiveGrant) ??
     dayRequests[0];
+  // Keep VIEW requests separate: an old pending VIEW request must not block
+  // staff from requesting the EDIT permission required for corrections.
+  const selectedDateEditRequest = dayRequests.find(
+    (item) => (item.kind ?? 'EDIT') === 'EDIT',
+  );
   const dayAccessInput = {
     date: selectedDate,
     today,
@@ -212,7 +217,9 @@ export default function StaffHomePage() {
       await createDateAccessRequest({
         businessDate: selectedDate,
         reason: requestReason.trim(),
-        kind: 'VIEW',
+        // Edit access is independent of an open shift. The payment API still
+        // enforces NO_OPEN_SHIFT when staff actually records money.
+        kind: 'EDIT',
       }).unwrap();
       setRequestReason('');
       setRequestFormOpen(false);
@@ -353,8 +360,8 @@ export default function StaffHomePage() {
     return { goalHours, achievedToDateHours, targetToDateHours, deltaHours, onTrack };
   }, [goalData]);
 
-  const collectedToday = financialDataConsistent ? (financialData.todayBalance ?? 0) : 0;
-  const toBeCollected = financialDataConsistent ? (financialData.outstanding.amount ?? 0) : 0;
+  const collectedToday = financialDataConsistent ? financialData.todayBalance ?? 0 : 0;
+  const toBeCollected = financialDataConsistent ? financialData.outstanding.amount ?? 0 : 0;
   const collectionTotal = collectedToday + toBeCollected;
   const collectionProgress =
     collectionTotal > 0 ? Math.min(100, (collectedToday / collectionTotal) * 100) : 0;
@@ -371,12 +378,13 @@ export default function StaffHomePage() {
   const minimumSelectableDate = addDays(today, -Math.max(0, Number(settings?.staffViewDays ?? 3)));
   const canGoPrevious = selectedDate > minimumSelectableDate;
 
+
   return (
-    <div className="staff-design relative z-10 -mt-14 min-h-screen min-w-0 bg-[#F3F5F9] pb-[max(2rem,env(safe-area-inset-bottom))] font-inter text-[#0E1B2B] before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-0 before:h-14 before:bg-[#002346] before:content-[''] sm:-mt-16 sm:before:h-16 lg:-mt-[76px] lg:before:h-[76px]">
-      <div className="relative z-10 mx-auto w-full max-w-[1440px] min-w-0 space-y-4 px-4 sm:px-6 lg:px-8">
+    <div className="staff-design min-h-screen min-w-0 bg-[#F3F5F9] pb-[max(2rem,env(safe-area-inset-bottom))] font-inter text-[#0E1B2B]">
+      <div className="mx-auto w-full max-w-[1440px] min-w-0 space-y-4 px-4 sm:px-6 lg:px-8">
         <section
           aria-label={t('staff.moneyToday')}
-          className="relative z-10 grid gap-4 rounded-[18px] border border-[#E2E8F0] bg-white p-4 shadow-[0_8px_24px_rgba(0,35,70,0.12)] sm:p-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:gap-6 lg:p-6"
+          className="relative z-20 -mb-14 -translate-y-14 grid gap-4 rounded-[18px] border border-[#E2E8F0] bg-white p-4 shadow-[0_8px_24px_rgba(0,35,70,0.12)] sm:-mb-16 sm:-translate-y-16 sm:p-5 lg:-mb-[76px] lg:-translate-y-[76px] lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:gap-6 lg:p-6"
         >
           <div className="min-w-0">
             <p className="font-inter text-sm font-semibold text-[#4A5A70]">
@@ -411,22 +419,10 @@ export default function StaffHomePage() {
             </div>
 
             <div className="mt-4 grid grid-cols-4 gap-1.5 sm:gap-2">
-              <MoneyChip
-                label={t('method.CASH')}
-                value={financialDataConsistent ? money(cashCollected) : '—'}
-              />
-              <MoneyChip
-                label={t('staff.card')}
-                value={financialDataConsistent ? money(financialData.visa) : '—'}
-              />
-              <MoneyChip
-                label={t('method.INSTAPAY')}
-                value={financialDataConsistent ? money(financialData.instapay) : '—'}
-              />
-              <MoneyChip
-                label={t('staff.shopShort')}
-                value={financialDataConsistent ? money(financialData.shopSales) : '—'}
-              />
+              <MoneyChip label={t('method.CASH')} value={financialDataConsistent ? money(cashCollected) : '—'} />
+              <MoneyChip label={t('staff.card')} value={financialDataConsistent ? money(financialData.visa) : '—'} />
+              <MoneyChip label={t('method.INSTAPAY')} value={financialDataConsistent ? money(financialData.instapay) : '—'} />
+              <MoneyChip label={t('staff.shopShort')} value={financialDataConsistent ? money(financialData.shopSales) : '—'} />
             </div>
           </div>
 
@@ -450,6 +446,8 @@ export default function StaffHomePage() {
           </div>
         </section>
 
+        {/* The money card is translated over the navy app header; its negative bottom
+            margin keeps following notices and booking controls in normal document flow. */}
         {showShiftFinancialOverview && financial.isError && (
           <ErrorState
             title={t('staff.financialDataUnavailable')}
@@ -476,8 +474,8 @@ export default function StaffHomePage() {
                 {t('staff.useActiveShiftDate')}
               </Button>
             )}
-            {canViewSelectedDate && !canEditSelectedDate && (
-              <ReadOnlyDayBanner date={selectedDate} />
+            {selectedDate < today && canViewSelectedDate && !canEditSelectedDate && (
+              <ReadOnlyDayBanner date={selectedDate} request={selectedDateEditRequest} />
             )}
           </div>
         )}
@@ -531,48 +529,60 @@ export default function StaffHomePage() {
                   <p className="mt-1 font-tajawal text-xs leading-5 text-amber-900">
                     {t('staff.pastDayLockedHint')}
                   </p>
-                  {selectedDateRequest?.status === 'PENDING' ? (
+                  <p className="mt-1 font-tajawal text-xs leading-5 text-amber-900/85">
+                    {t('staff.editAccessShiftHint')}
+                  </p>
+                  {selectedDateEditRequest?.status === 'PENDING' ? (
                     <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-cairo text-xs font-bold text-amber-900">
                       {t('staff.accessRequestPending')}
                     </p>
-                  ) : !requestFormOpen ? (
-                    <Button className="mt-2" onClick={() => setRequestFormOpen(true)}>
-                      {t('staff.requestPastDayAccess')}
-                    </Button>
                   ) : (
-                    <form className="mt-2 space-y-2" onSubmit={submitDateAccessRequest}>
-                      <textarea
-                        value={requestReason}
-                        onChange={(event) => setRequestReason(event.target.value)}
-                        minLength={5}
-                        maxLength={500}
-                        required
-                        rows={2}
-                        className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 font-tajawal text-sm text-navy"
-                        placeholder={t('staff.accessRequestReasonPlaceholder')}
-                      />
-                      {dateAccessRequestState.error && (
-                        <p className="font-tajawal text-sm text-red-700" role="alert">
-                          {errorMessage(dateAccessRequestState.error, t)}
+                    <>
+                      {selectedDateEditRequest?.status === 'REJECTED' && (
+                        <p className="mt-2 font-tajawal text-xs text-red-700">
+                          {t('staff.accessRequestRejected')}
                         </p>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="submit"
-                          loading={dateAccessRequestState.isLoading}
-                          disabled={requestReason.trim().length < 5}
-                        >
-                          {t('staff.sendAccessRequest')}
+                      {!requestFormOpen ? (
+                        <Button className="mt-2" onClick={() => setRequestFormOpen(true)}>
+                          {t('staff.requestPastDayAccess')}
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => setRequestFormOpen(false)}
-                        >
-                          {t('common.cancel')}
-                        </Button>
-                      </div>
-                    </form>
+                      ) : (
+                        <form className="mt-2 space-y-2" onSubmit={submitDateAccessRequest}>
+                          <textarea
+                            value={requestReason}
+                            onChange={(event) => setRequestReason(event.target.value)}
+                            minLength={5}
+                            maxLength={500}
+                            required
+                            rows={2}
+                            className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 font-tajawal text-sm text-navy"
+                            placeholder={t('staff.accessRequestReasonPlaceholder')}
+                          />
+                          {dateAccessRequestState.error && (
+                            <p className="font-tajawal text-sm text-red-700" role="alert">
+                              {errorMessage(dateAccessRequestState.error, t)}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="submit"
+                              loading={dateAccessRequestState.isLoading}
+                              disabled={requestReason.trim().length < 5}
+                            >
+                              {t('staff.sendAccessRequest')}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => setRequestFormOpen(false)}
+                            >
+                              {t('common.cancel')}
+                            </Button>
+                          </div>
+                        </form>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -694,9 +704,7 @@ export default function StaffHomePage() {
           totalBalanceLabel={t('staff.totalBalance')}
           totalBalanceValue={financialDataConsistent ? money(financialData.totalBalance ?? 0) : '—'}
           handoverLabel={t('staff.handoverInTransit')}
-          handoverValue={
-            financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'
-          }
+          handoverValue={financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'}
           actions={[
             {
               key: shift ? 'close' : 'open',
@@ -826,9 +834,7 @@ export default function StaffHomePage() {
             onReviewUnpaid={() => {
               setClosingOpen(false);
               setDay(shiftBusinessDate ?? today);
-              document
-                .getElementById('staff-bookings')
-                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              document.getElementById('staff-bookings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
           />
         ) : (
@@ -875,10 +881,7 @@ export default function StaffHomePage() {
 
 function MoneyChip({ label, value }) {
   return (
-    <div
-      className="min-w-0 rounded-[10px] border px-1.5 py-2 text-center sm:px-2"
-      style={{ backgroundColor: '#EEF2F6', borderColor: '#DCE5EE' }}
-    >
+    <div className="min-w-0 rounded-[10px] bg-[#F3F5F9] px-1.5 py-2 text-center sm:px-2">
       <p className="truncate font-inter text-[10px] text-[#4A5A70] sm:text-[11px]">{label}</p>
       <p className="mt-0.5 truncate font-inter text-xs font-bold text-[#0E1B2B] tabular-nums sm:text-sm">
         {value}
@@ -901,9 +904,7 @@ function GoalRing({ label, achieved, target, color, unit, loading }) {
       <div className="min-w-0 leading-tight">
         <p className="truncate font-inter text-[10px] text-[#4A5A70] sm:text-xs">{label}</p>
         <p className="mt-0.5 truncate font-inter text-xs font-extrabold text-[#002346] tabular-nums sm:text-sm">
-          {loading
-            ? '—'
-            : `${Number(achieved ?? 0).toFixed(1)} / ${Number(target ?? 0).toFixed(1)} ${unit}`}
+          {loading ? '—' : `${Number(achieved ?? 0).toFixed(1)} / ${Number(target ?? 0).toFixed(1)} ${unit}`}
         </p>
       </div>
     </div>
@@ -917,11 +918,8 @@ function GoalBar({ label, achieved, target, color, unit }) {
       <div className="flex items-center justify-between gap-3 font-inter text-xs sm:text-sm">
         <span className="font-semibold text-[#33435A]">{label}</span>
         <span className="shrink-0 text-[#4A5A70] tabular-nums">
-          <b className="font-extrabold text-[#002346]">
-            {Number(achieved ?? 0).toFixed(1)} {unit}
-          </b>
-          {' / '}
-          {Number(target ?? 0).toFixed(1)} {unit}
+          <b className="font-extrabold text-[#002346]">{Number(achieved ?? 0).toFixed(1)} {unit}</b>
+          {' / '}{Number(target ?? 0).toFixed(1)} {unit}
         </span>
       </div>
       <div className="mt-2 h-[10px] overflow-hidden rounded-full bg-[#E6EBF2]">
@@ -983,7 +981,7 @@ function BookingRow({
             <span dir="ltr" className="tabular-nums">
               {formatTime(appointment.startsAt, locale)}–{formatTime(appointment.endsAt, locale)}
             </span>
-            {appointment.court?.name || appointment.court?.staffName
+            {(appointment.court?.name || appointment.court?.staffName)
               ? ` · ${appointment.court.name || appointment.court.staffName}`
               : ''}
           </p>
@@ -995,19 +993,17 @@ function BookingRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-end">
           <p className="font-inter text-[15px] font-extrabold leading-5 text-[#002346] tabular-nums sm:text-base">
-            {formatEgpWithCurrency(due > 0 ? due : (appointment.payment?.expected ?? 0), locale)}
+            {formatEgpWithCurrency(due > 0 ? due : appointment.payment?.expected ?? 0, locale)}
           </p>
-          <span
-            className={`rounded-full px-2 py-0.5 font-inter text-[10px] font-bold ${
-              status === 'PAID'
-                ? 'bg-[#EAF6DF] text-[#3E6B12]'
-                : status === 'ON_ACCOUNT'
-                  ? 'bg-[#E6EEF8] text-[#0B3B6E]'
-                  : status === 'PARTIAL'
-                    ? 'bg-[#FFF4D6] text-[#80520A]'
-                    : 'bg-[#FDF0E2] text-[#8F460A]'
-            }`}
-          >
+          <span className={`rounded-full px-2 py-0.5 font-inter text-[10px] font-bold ${
+            status === 'PAID'
+              ? 'bg-[#EAF6DF] text-[#3E6B12]'
+              : status === 'ON_ACCOUNT'
+                ? 'bg-[#E6EEF8] text-[#0B3B6E]'
+                : status === 'PARTIAL'
+                  ? 'bg-[#FFF4D6] text-[#80520A]'
+                  : 'bg-[#FDF0E2] text-[#8F460A]'
+          }`}>
             {t(`payment.${status}`)}
           </span>
         </div>
@@ -1169,11 +1165,7 @@ function ClosingReview({
       {unpaidSummary.unpaid > 0 && (
         <section className="rounded-[20px] border border-[#F5C78E] bg-[#FDF0E2] p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <AlertTriangle
-              className="mt-0.5 size-7 shrink-0 text-[#9A4C0B]"
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <AlertTriangle className="mt-0.5 size-7 shrink-0 text-[#9A4C0B]" strokeWidth={2} aria-hidden="true" />
             <div className="min-w-0">
               <p className="font-inter text-base font-extrabold leading-6 text-[#8F460A] sm:text-lg">
                 {t('staff.closingUnpaidCount', {
@@ -1203,13 +1195,8 @@ function ClosingReview({
           </h2>
           <div className="mt-4 divide-y divide-[#E7ECF2]">
             {summaryRows.map(([label, value]) => (
-              <div
-                key={label}
-                className="grid min-h-[48px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2.5"
-              >
-                <span className="min-w-0 break-words font-inter text-sm text-[#4A5A70] sm:text-base">
-                  {label}
-                </span>
+              <div key={label} className="grid min-h-[48px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2.5">
+                <span className="min-w-0 break-words font-inter text-sm text-[#4A5A70] sm:text-base">{label}</span>
                 <span className="shrink-0 font-inter text-sm font-bold text-[#0E1B2B] tabular-nums sm:text-base">
                   {value}
                 </span>
@@ -1236,9 +1223,7 @@ function ClosingReview({
                 {t('staff.closingCashNow')}
               </span>
               <span className="flex min-h-[72px] items-center gap-3 rounded-[18px] border-[2px] border-[#174B7C] bg-white px-4 sm:min-h-[82px] sm:px-5">
-                <span className="shrink-0 font-inter text-sm font-bold text-[#4A5A70] sm:text-base">
-                  EGP
-                </span>
+                <span className="shrink-0 font-inter text-sm font-bold text-[#4A5A70] sm:text-base">EGP</span>
                 <input
                   type="text"
                   value={formatEgp(expectedCash, locale)}
@@ -1343,9 +1328,7 @@ function ClosingStep({ number, label, active = false }) {
   return (
     <li className="min-w-0 text-center">
       <span className={`block h-[9px] rounded-full ${active ? 'bg-[#8DC63F]' : 'bg-[#D5DDE7]'}`} />
-      <span
-        className={`mt-2 block truncate font-inter text-sm font-bold sm:text-base ${active ? 'text-[#3E6B12]' : 'text-[#4A5A70]'}`}
-      >
+      <span className={`mt-2 block truncate font-inter text-sm font-bold sm:text-base ${active ? 'text-[#3E6B12]' : 'text-[#4A5A70]'}`}>
         {number} {label}
       </span>
     </li>

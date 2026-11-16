@@ -154,10 +154,12 @@ const en = {
       pastDayLocked: 'This past business day is locked',
       pastDayLockedHint:
         'Days older than the view window need finance approval. Today and future schedules remain available.',
-      accessRequestPending: 'Your request is waiting for finance.',
+      editAccessShiftHint:
+        'You can request edit access without opening a shift. After approval, open a shift before recording any payment.',
+      accessRequestPending: 'Your edit-access request is waiting for finance.',
       accessRequestRejected:
         'Your previous request was declined. You can send a new request with more details.',
-      requestPastDayAccess: 'Request access from finance',
+      requestPastDayAccess: 'Request edit access',
       accessRequestReasonPlaceholder:
         'For example: correct a booking payment or review a missing record.',
       sendAccessRequest: 'Send request',

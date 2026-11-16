@@ -15,6 +15,7 @@ import { errorMessage } from '../../shared/lib/apiError';
 export default function ProfilePage() {
   const { t } = useTranslation();
   const user = useSelector(selectUser);
+  const isStaff = user?.role === 'STAFF';
   const [updateMe, updateState] = useUpdateMeMutation();
   const [changePassword, passwordState] = useChangePasswordMutation();
   const [notice, setNotice] = useState('');
@@ -53,7 +54,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-7">
+    <div
+      className={
+        isStaff
+          ? 'mx-auto w-full max-w-4xl space-y-7 px-4 pb-8 pt-6 sm:px-6 lg:px-8'
+          : 'mx-auto max-w-4xl space-y-7'
+      }
+    >
       <PageHeader eyebrow={t('common.profile')} title={t('profile.title')} description={t('profile.description')} />
 
       <Card className="overflow-hidden">
