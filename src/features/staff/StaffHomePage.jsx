@@ -229,7 +229,6 @@ export default function StaffHomePage() {
       await createDateAccessRequest({
         businessDate: selectedDate,
         reason: requestReason.trim(),
-y.
         kind: 'EDIT',
       }).unwrap();
       setRequestReason('');
