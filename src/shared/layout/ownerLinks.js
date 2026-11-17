@@ -12,9 +12,7 @@ import {
   Settings2,
   ShieldCheck,
   UserPlus,
-  Users,
   UsersRound,
-  WalletCards,
 } from 'lucide-react';
 
 export const ownerLinks = [
@@ -25,11 +23,11 @@ export const ownerLinks = [
   { to: '/app/accountant/verification', key: 'owner.navVerification', icon: ClipboardCheck },
   { to: '/app/accountant/handovers', key: 'owner.navHandovers', icon: Send },
   { to: '/app/accountant/inbox', key: 'owner.navFinanceRequests', icon: Inbox },
-  { to: '/app/accountant/staff', key: 'owner.navStaffMoney', icon: Users },
+  { to: '/app/accountant/staff-history', key: 'accountant.staffHistoryTitle', icon: UsersRound },
   { to: '/app/accountant/team', key: 'owner.navStaffAccounts', icon: UserPlus },
   { to: '/app/accountant/attendance', key: 'owner.navAttendance', icon: Clock3 },
   { to: '/app/accountant/schedule', key: 'owner.navSchedule', icon: CalendarClock },
-  { to: '/app/accountant/shifts', key: 'owner.navShifts', icon: WalletCards },
+
   { to: '/app/accountant/reports', key: 'owner.navReports', icon: BarChart3 },
   { to: '/app/accountant/bookly', key: 'owner.navBookly', icon: RefreshCw },
   { to: '/app/owner/users', key: 'owner.navUsers', icon: UsersRound },

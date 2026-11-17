@@ -47,7 +47,7 @@ export default function ReceiptCapture({
   onClear,
   label,
   disabled = false,
-  autoUpload = false, // R10: choosing/taking the photo uploads immediately
+  autoUpload = false,
 }) {
   const { t } = useTranslation();
   const [preview, setPreview] = useState(null);
@@ -95,7 +95,6 @@ export default function ReceiptCapture({
       if (autoUpload) {
         try {
           await uploadPreview(prepared);
-          // keep preview for the user to see, but it is now attached on the server
         } catch {
           // The mutation error is rendered below; preview stays for retry.
         }

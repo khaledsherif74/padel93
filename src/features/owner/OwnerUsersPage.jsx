@@ -21,10 +21,11 @@ import { formatDateTime } from '../../shared/lib/date';
 import { errorMessage } from '../../shared/lib/apiError';
 import { selectUser } from '../auth/authSelectors';
 import { useSelector } from 'react-redux';
+import OwnerPermissionsPanel from './OwnerPermissionsPanel';
 
 const EMPTY_FORM = { username: '', name: '', phone: '', password: '', role: 'STAFF' };
 
-export default function OwnerUsersPage() {
+export default function OwnerUsersPage({ embedded = false }) {
   const { t, i18n } = useTranslation();
   const currentUser = useSelector(selectUser);
   const users = useGetUsersQuery();
@@ -99,17 +100,27 @@ export default function OwnerUsersPage() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-7">
-      <PageHeader
-        eyebrow={t('owner.usersEyebrow')}
-        title={t('owner.usersTitle')}
-        description={t('owner.usersDescription')}
-        actions={
+      {!embedded && (
+        <PageHeader
+          eyebrow={t('owner.usersEyebrow')}
+          title={t('owner.usersTitle')}
+          description={t('owner.usersDescription')}
+          actions={
+            <Button onClick={openCreate}>
+              <Plus className="size-4" aria-hidden="true" />
+              {t('owner.createUser')}
+            </Button>
+          }
+        />
+      )}
+      {embedded && (
+        <div className="flex justify-end">
           <Button onClick={openCreate}>
             <Plus className="size-4" aria-hidden="true" />
             {t('owner.createUser')}
           </Button>
-        }
-      />
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         <div className="hidden overflow-x-auto md:block">
@@ -264,6 +275,8 @@ export default function OwnerUsersPage() {
           )}
         </div>
       </Card>
+
+      {embedded && <OwnerPermissionsPanel />}
 
       <Modal
         open={Boolean(mode)}

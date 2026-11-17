@@ -13,7 +13,7 @@ export default function AppHeader({ user, onLogout, onMenuClick }) {
   const onHub = pathname === '/app/hub';
   const isStaff = user?.role === 'STAFF';
   const servicesClass = user?.role === 'OWNER' ? 'hidden sm:inline-flex' : 'inline-flex';
-  // R13: STAFF has no hub button
+
   const showHubButton = !onHub && !isStaff;
 
   return (

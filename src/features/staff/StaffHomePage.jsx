@@ -8,8 +8,9 @@ import {
   LockKeyhole,
   ShoppingBag,
   ReceiptText,
+  NotebookPen,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -25,12 +26,14 @@ import {
   useGetMyStaffDateAccessRequestsQuery,
   useCreateStaffDateAccessRequestMutation,
   useOpenShiftMutation,
+  useCreateOwnerNotaMutation,
+  useGetOwnerNotaOwnersQuery,
 } from '../../app/api';
 import { businessDate, formatTime, addDays } from '../../shared/lib/date';
 import { selectPermissions, selectUser } from '../auth/authSelectors';
 import { errorMessage } from '../../shared/lib/apiError';
 import { useClientRequestId } from '../../shared/lib/clientRequestId';
-import { formatEgp, formatEgpWithCurrency } from '../../shared/lib/money';
+import { formatEgpWithCurrency } from '../../shared/lib/money';
 import { groupBookings } from '../../shared/lib/bookingGroups';
 import { canEditDay, canViewDay } from '../../shared/lib/dayAccess';
 import {
@@ -75,6 +78,18 @@ export default function StaffHomePage() {
   const [saleAppointment, setSaleAppointment] = useState(null);
   const [saleOpen, setSaleOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [notaOpen, setNotaOpen] = useState(false);
+  const [notaOwnerId, setNotaOwnerId] = useState('');
+  const [notaAmount, setNotaAmount] = useState('');
+  const [notaNote, setNotaNote] = useState('');
+  const [createOwnerNota, ownerNotaState] = useCreateOwnerNotaMutation();
+  const notaOwners = useGetOwnerNotaOwnersQuery(undefined, { pollingInterval: 60_000 });
+  const activeNotaOwners = notaOwners.data?.items ?? [];
+  useEffect(() => {
+    if (!activeNotaOwners.some((owner) => owner.id === notaOwnerId) && activeNotaOwners[0]) {
+      setNotaOwnerId(activeNotaOwners[0].id);
+    }
+  }, [activeNotaOwners, notaOwnerId]);
   const [requestReason, setRequestReason] = useState('');
   const [requestFormOpen, setRequestFormOpen] = useState(false);
 
@@ -102,11 +117,8 @@ export default function StaffHomePage() {
     dayRequests.find((item) => isActiveGrant(item) && (item.kind ?? 'EDIT') === 'EDIT') ??
     dayRequests.find(isActiveGrant) ??
     dayRequests[0];
-  // Keep VIEW requests separate: an old pending VIEW request must not block
-  // staff from requesting the EDIT permission required for corrections.
-  const selectedDateEditRequest = dayRequests.find(
-    (item) => (item.kind ?? 'EDIT') === 'EDIT',
-  );
+
+  const selectedDateEditRequest = dayRequests.find((item) => (item.kind ?? 'EDIT') === 'EDIT');
   const dayAccessInput = {
     date: selectedDate,
     today,
@@ -190,11 +202,11 @@ export default function StaffHomePage() {
     setClosingOpen(true);
   }
 
-  async function submitClose(event) {
+  async function submitClose(event, countedCash) {
     event.preventDefault();
     if (!shift) return;
     try {
-      const body = { clientRequestId: clientRequest.id };
+      const body = { clientRequestId: clientRequest.id, countedCash };
       const note = closeNote.trim();
       const reason = closeReason.trim();
       if (note) body.note = note;
@@ -217,8 +229,7 @@ export default function StaffHomePage() {
       await createDateAccessRequest({
         businessDate: selectedDate,
         reason: requestReason.trim(),
-        // Edit access is independent of an open shift. The payment API still
-        // enforces NO_OPEN_SHIFT when staff actually records money.
+y.
         kind: 'EDIT',
       }).unwrap();
       setRequestReason('');
@@ -266,8 +277,7 @@ export default function StaffHomePage() {
     0,
   );
   const dashboardOutstanding = dashboardPayableBookings.reduce(
-    (total, booking) =>
-      total + Math.max(0, (booking.payment.due ?? 0) - (booking.payment.onAccountOpen ?? 0)),
+    (total, booking) => total + Math.max(0, booking.payment.due ?? 0),
     0,
   );
 
@@ -349,7 +359,6 @@ export default function StaffHomePage() {
     !appointments.isFetching &&
     !financial.isFetching,
   );
-  const financialLoading = financial.isFetching && !financial.currentData;
   const appointmentsLoading = appointments.isFetching && !appointments.currentData;
 
   const goalData = goalQuery.data ?? null;
@@ -360,8 +369,8 @@ export default function StaffHomePage() {
     return { goalHours, achievedToDateHours, targetToDateHours, deltaHours, onTrack };
   }, [goalData]);
 
-  const collectedToday = financialDataConsistent ? financialData.todayBalance ?? 0 : 0;
-  const toBeCollected = financialDataConsistent ? financialData.outstanding.amount ?? 0 : 0;
+  const collectedToday = financialDataConsistent ? (financialData.todayBalance ?? 0) : 0;
+  const toBeCollected = financialDataConsistent ? (financialData.outstanding.amount ?? 0) : 0;
   const collectionTotal = collectedToday + toBeCollected;
   const collectionProgress =
     collectionTotal > 0 ? Math.min(100, (collectedToday / collectionTotal) * 100) : 0;
@@ -377,7 +386,6 @@ export default function StaffHomePage() {
   const monthGoalTarget = goalData?.goalHours ?? 0;
   const minimumSelectableDate = addDays(today, -Math.max(0, Number(settings?.staffViewDays ?? 3)));
   const canGoPrevious = selectedDate > minimumSelectableDate;
-
 
   return (
     <div className="staff-design min-h-screen min-w-0 bg-[#F3F5F9] pb-[max(2rem,env(safe-area-inset-bottom))] font-inter text-[#0E1B2B]">
@@ -419,10 +427,22 @@ export default function StaffHomePage() {
             </div>
 
             <div className="mt-4 grid grid-cols-4 gap-1.5 sm:gap-2">
-              <MoneyChip label={t('method.CASH')} value={financialDataConsistent ? money(cashCollected) : '—'} />
-              <MoneyChip label={t('staff.card')} value={financialDataConsistent ? money(financialData.visa) : '—'} />
-              <MoneyChip label={t('method.INSTAPAY')} value={financialDataConsistent ? money(financialData.instapay) : '—'} />
-              <MoneyChip label={t('staff.shopShort')} value={financialDataConsistent ? money(financialData.shopSales) : '—'} />
+              <MoneyChip
+                label={t('method.CASH')}
+                value={financialDataConsistent ? money(cashCollected) : '—'}
+              />
+              <MoneyChip
+                label={t('staff.card')}
+                value={financialDataConsistent ? money(financialData.visa) : '—'}
+              />
+              <MoneyChip
+                label={t('method.INSTAPAY')}
+                value={financialDataConsistent ? money(financialData.instapay) : '—'}
+              />
+              <MoneyChip
+                label={t('staff.shopShort')}
+                value={financialDataConsistent ? money(financialData.shopSales) : '—'}
+              />
             </div>
           </div>
 
@@ -446,8 +466,6 @@ export default function StaffHomePage() {
           </div>
         </section>
 
-        {/* The money card is translated over the navy app header; its negative bottom
-            margin keeps following notices and booking controls in normal document flow. */}
         {showShiftFinancialOverview && financial.isError && (
           <ErrorState
             title={t('staff.financialDataUnavailable')}
@@ -704,7 +722,9 @@ export default function StaffHomePage() {
           totalBalanceLabel={t('staff.totalBalance')}
           totalBalanceValue={financialDataConsistent ? money(financialData.totalBalance ?? 0) : '—'}
           handoverLabel={t('staff.handoverInTransit')}
-          handoverValue={financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'}
+          handoverValue={
+            financialDataConsistent ? money(financialData.handoverInTransit ?? 0) : '—'
+          }
           actions={[
             {
               key: shift ? 'close' : 'open',
@@ -739,6 +759,14 @@ export default function StaffHomePage() {
               icon: Banknote,
               variant: 'secondary',
               to: '/app/staff/handover',
+            },
+            {
+              key: 'nota',
+              label: 'Nota',
+              icon: NotebookPen,
+              variant: 'secondary',
+              onClick: () => setNotaOpen(true),
+              disabled: !shift,
             },
           ]}
         />
@@ -834,7 +862,9 @@ export default function StaffHomePage() {
             onReviewUnpaid={() => {
               setClosingOpen(false);
               setDay(shiftBusinessDate ?? today);
-              document.getElementById('staff-bookings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              document
+                .getElementById('staff-bookings')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
           />
         ) : (
@@ -862,6 +892,89 @@ export default function StaffHomePage() {
         }}
       />
 
+      <Modal open={notaOpen} onClose={() => setNotaOpen(false)} title={t('staff.notaTitle')}>
+        <form
+          className="space-y-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            const amount = Math.round(Number(notaAmount) * 100);
+            if (!Number.isFinite(amount) || amount <= 0) return;
+            try {
+              await createOwnerNota({
+                ownerId: notaOwnerId,
+                shiftId: shift.id,
+                amount,
+                ...(notaNote.trim() ? { note: notaNote.trim() } : {}),
+              }).unwrap();
+              setNotaAmount('');
+              setNotaNote('');
+              setNotaOpen(false);
+            } catch {
+              /* mutation error is displayed below */
+            }
+          }}
+        >
+          <label className="block space-y-1 text-sm font-semibold text-[#4A5A70]">
+            <span>{t('staff.notaOwner')}</span>
+            <select
+              value={notaOwnerId}
+              onChange={(event) => setNotaOwnerId(event.target.value)}
+              required
+              disabled={notaOwners.isLoading || activeNotaOwners.length === 0}
+              className="min-h-12 w-full rounded-xl border border-[#D5DDE7] bg-white px-3 text-[#0E1B2B]"
+            >
+              {activeNotaOwners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1 text-sm font-semibold text-[#4A5A70]">
+            <span>{t('staff.notaAmount')}</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={notaAmount}
+              onChange={(event) => setNotaAmount(event.target.value)}
+              className="min-h-12 w-full rounded-xl border border-[#D5DDE7] px-3 text-[#0E1B2B]"
+            />
+          </label>
+          <label className="block space-y-1 text-sm font-semibold text-[#4A5A70]">
+            <span>{t('staff.notaNote')}</span>
+            <textarea
+              value={notaNote}
+              onChange={(event) => setNotaNote(event.target.value)}
+              maxLength={500}
+              rows={2}
+              className="w-full rounded-xl border border-[#D5DDE7] px-3 py-2 text-[#0E1B2B]"
+            />
+          </label>
+          {(ownerNotaState.error || notaOwners.isError) && (
+            <p role="alert" className="text-sm text-red-700">
+              {t('staff.notaError')}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={
+              ownerNotaState.isLoading ||
+              notaOwners.isLoading ||
+              !notaOwnerId ||
+              activeNotaOwners.length === 0 ||
+              !notaAmount ||
+              Number(notaAmount) <= 0
+            }
+            className="min-h-12 w-full rounded-xl bg-[#8DC63F] px-4 font-bold text-[#0E2A05] disabled:opacity-50"
+          >
+            {ownerNotaState.isLoading ? t('common.loading') : t('staff.notaSave')}
+          </button>
+          <p className="text-xs text-[#64748B]">{t('staff.notaHint')}</p>
+        </form>
+      </Modal>
+
       <ShopSaleModal
         open={saleOpen}
         appointment={saleAppointment}
@@ -874,10 +987,6 @@ export default function StaffHomePage() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------
-// Staff-only primitives (bigger, readable, but still compact)
-// ---------------------------------------------------------------
 
 function MoneyChip({ label, value }) {
   return (
@@ -904,7 +1013,9 @@ function GoalRing({ label, achieved, target, color, unit, loading }) {
       <div className="min-w-0 leading-tight">
         <p className="truncate font-inter text-[10px] text-[#4A5A70] sm:text-xs">{label}</p>
         <p className="mt-0.5 truncate font-inter text-xs font-extrabold text-[#002346] tabular-nums sm:text-sm">
-          {loading ? '—' : `${Number(achieved ?? 0).toFixed(1)} / ${Number(target ?? 0).toFixed(1)} ${unit}`}
+          {loading
+            ? '—'
+            : `${Number(achieved ?? 0).toFixed(1)} / ${Number(target ?? 0).toFixed(1)} ${unit}`}
         </p>
       </div>
     </div>
@@ -918,8 +1029,11 @@ function GoalBar({ label, achieved, target, color, unit }) {
       <div className="flex items-center justify-between gap-3 font-inter text-xs sm:text-sm">
         <span className="font-semibold text-[#33435A]">{label}</span>
         <span className="shrink-0 text-[#4A5A70] tabular-nums">
-          <b className="font-extrabold text-[#002346]">{Number(achieved ?? 0).toFixed(1)} {unit}</b>
-          {' / '}{Number(target ?? 0).toFixed(1)} {unit}
+          <b className="font-extrabold text-[#002346]">
+            {Number(achieved ?? 0).toFixed(1)} {unit}
+          </b>
+          {' / '}
+          {Number(target ?? 0).toFixed(1)} {unit}
         </span>
       </div>
       <div className="mt-2 h-[10px] overflow-hidden rounded-full bg-[#E6EBF2]">
@@ -981,7 +1095,7 @@ function BookingRow({
             <span dir="ltr" className="tabular-nums">
               {formatTime(appointment.startsAt, locale)}–{formatTime(appointment.endsAt, locale)}
             </span>
-            {(appointment.court?.name || appointment.court?.staffName)
+            {appointment.court?.name || appointment.court?.staffName
               ? ` · ${appointment.court.name || appointment.court.staffName}`
               : ''}
           </p>
@@ -993,17 +1107,17 @@ function BookingRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-end">
           <p className="font-inter text-[15px] font-extrabold leading-5 text-[#002346] tabular-nums sm:text-base">
-            {formatEgpWithCurrency(due > 0 ? due : appointment.payment?.expected ?? 0, locale)}
+            {formatEgpWithCurrency(due > 0 ? due : (appointment.payment?.expected ?? 0), locale)}
           </p>
-          <span className={`rounded-full px-2 py-0.5 font-inter text-[10px] font-bold ${
-            status === 'PAID'
-              ? 'bg-[#EAF6DF] text-[#3E6B12]'
-              : status === 'ON_ACCOUNT'
-                ? 'bg-[#E6EEF8] text-[#0B3B6E]'
+          <span
+            className={`rounded-full px-2 py-0.5 font-inter text-[10px] font-bold ${
+              status === 'PAID'
+                ? 'bg-[#EAF6DF] text-[#3E6B12]'
                 : status === 'PARTIAL'
                   ? 'bg-[#FFF4D6] text-[#80520A]'
                   : 'bg-[#FDF0E2] text-[#8F460A]'
-          }`}>
+            }`}
+          >
             {t(`payment.${status}`)}
           </span>
         </div>
@@ -1134,8 +1248,14 @@ function ClosingReview({
   const now = Date.now();
   const unpaidSummary = summarizeUnpaid(summary.bookings ?? [], now);
   const expectedCash = summary.cash?.expectedCash ?? 0;
-  // This is the booking/payment reconciliation difference, not a physical cash count.
-  const closingDifference = summary.excel?.difference ?? 0;
+  const [countedCashInput, setCountedCashInput] = useState((expectedCash / 100).toFixed(2));
+  useEffect(() => setCountedCashInput((expectedCash / 100).toFixed(2)), [expectedCash]);
+  const countedCashPiasters = Number.isFinite(Number(countedCashInput))
+    ? Math.round(Number(countedCashInput) * 100)
+    : NaN;
+  const closingDifference = Number.isFinite(countedCashPiasters)
+    ? countedCashPiasters - expectedCash
+    : 0;
   const playedMinutes = (summary.bookings ?? []).reduce((total, booking) => {
     const start = new Date(booking.startsAt).getTime();
     const end = new Date(booking.endsAt).getTime();
@@ -1165,7 +1285,11 @@ function ClosingReview({
       {unpaidSummary.unpaid > 0 && (
         <section className="rounded-[20px] border border-[#F5C78E] bg-[#FDF0E2] p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 size-7 shrink-0 text-[#9A4C0B]" strokeWidth={2} aria-hidden="true" />
+            <AlertTriangle
+              className="mt-0.5 size-7 shrink-0 text-[#9A4C0B]"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
             <div className="min-w-0">
               <p className="font-inter text-base font-extrabold leading-6 text-[#8F460A] sm:text-lg">
                 {t('staff.closingUnpaidCount', {
@@ -1195,8 +1319,13 @@ function ClosingReview({
           </h2>
           <div className="mt-4 divide-y divide-[#E7ECF2]">
             {summaryRows.map(([label, value]) => (
-              <div key={label} className="grid min-h-[48px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2.5">
-                <span className="min-w-0 break-words font-inter text-sm text-[#4A5A70] sm:text-base">{label}</span>
+              <div
+                key={label}
+                className="grid min-h-[48px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2.5"
+              >
+                <span className="min-w-0 break-words font-inter text-sm text-[#4A5A70] sm:text-base">
+                  {label}
+                </span>
                 <span className="shrink-0 font-inter text-sm font-bold text-[#0E1B2B] tabular-nums sm:text-base">
                   {value}
                 </span>
@@ -1213,7 +1342,10 @@ function ClosingReview({
           </div>
         </section>
 
-        <form className="min-w-0 space-y-4" onSubmit={onSubmit}>
+        <form
+          className="min-w-0 space-y-4"
+          onSubmit={(event) => onSubmit(event, countedCashPiasters)}
+        >
           <section className="min-w-0 rounded-[22px] border border-[#E2E8F0] bg-white p-4 sm:p-6">
             <h2 className="font-inter text-xl font-extrabold text-[#002346]">
               {t('staff.closingStepCountHeading')}
@@ -1223,20 +1355,25 @@ function ClosingReview({
                 {t('staff.closingCashNow')}
               </span>
               <span className="flex min-h-[72px] items-center gap-3 rounded-[18px] border-[2px] border-[#174B7C] bg-white px-4 sm:min-h-[82px] sm:px-5">
-                <span className="shrink-0 font-inter text-sm font-bold text-[#4A5A70] sm:text-base">EGP</span>
+                <span className="shrink-0 font-inter text-sm font-bold text-[#4A5A70] sm:text-base">
+                  EGP
+                </span>
                 <input
-                  type="text"
-                  value={formatEgp(expectedCash, locale)}
-                  readOnly
-                  aria-readonly="true"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={countedCashInput}
+                  onChange={(event) => setCountedCashInput(event.target.value)}
+                  required
                   className="min-w-0 flex-1 bg-transparent font-inter text-xl font-extrabold text-[#002346] outline-none sm:text-2xl"
                 />
                 <span className="rounded-full bg-[#EAF1F9] px-2.5 py-1 font-inter text-[10px] font-bold text-[#174B7C] sm:text-xs">
-                  {t('staff.viewOnly')}
+                  {t('common.edit')}
                 </span>
               </span>
               <span className="mt-2 block font-inter text-xs leading-5 text-[#4A5A70]">
-                {t('staff.closingCashReadOnlyHint')}
+                {t('staff.closingCashExpectedHint', { amount: moneyFmt(expectedCash) })}
               </span>
             </label>
 
@@ -1244,7 +1381,9 @@ function ClosingReview({
               className={`mt-4 flex flex-wrap items-center justify-between gap-2 rounded-[14px] px-3.5 py-3 sm:px-4 ${
                 closingDifference === 0
                   ? 'bg-[#DCFCE7] text-[#166534]'
-                  : 'bg-[#FEE2E2] text-[#991B1B]'
+                  : closingDifference < 0
+                    ? 'bg-[#FEE2E2] text-[#991B1B]'
+                    : 'bg-[#EAF1F9] text-[#174B7C]'
               }`}
               role="status"
               aria-live="polite"
@@ -1312,7 +1451,12 @@ function ClosingReview({
 
           <button
             type="submit"
-            disabled={state.isLoading || !closeReasonValid}
+            disabled={
+              state.isLoading ||
+              !closeReasonValid ||
+              !Number.isFinite(countedCashPiasters) ||
+              countedCashPiasters < 0
+            }
             className="flex min-h-[64px] w-full items-center justify-center gap-3 rounded-[20px] bg-[#8DC63F] px-5 py-4 font-inter text-base font-extrabold text-[#0E2A05] outline-none transition hover:bg-[#9AD34D] focus-visible:ring-2 focus-visible:ring-[#002346] disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
           >
             <LockKeyhole className="size-5" aria-hidden="true" />
@@ -1328,7 +1472,9 @@ function ClosingStep({ number, label, active = false }) {
   return (
     <li className="min-w-0 text-center">
       <span className={`block h-[9px] rounded-full ${active ? 'bg-[#8DC63F]' : 'bg-[#D5DDE7]'}`} />
-      <span className={`mt-2 block truncate font-inter text-sm font-bold sm:text-base ${active ? 'text-[#3E6B12]' : 'text-[#4A5A70]'}`}>
+      <span
+        className={`mt-2 block truncate font-inter text-sm font-bold sm:text-base ${active ? 'text-[#3E6B12]' : 'text-[#4A5A70]'}`}
+      >
         {number} {label}
       </span>
     </li>

@@ -10,7 +10,10 @@ export default function StaffProfilePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const user = useSelector(selectUser);
-  const name = user?.name || t('role.STAFF');
+  const role = user?.role ?? 'STAFF';
+  const roleLabel = t(`role.${role}`);
+  const homePath = role === 'ACCOUNTANT' ? '/app/accountant' : '/app/staff';
+  const name = user?.name || roleLabel;
   const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() || 'S';
 
   function signOut() {
@@ -24,7 +27,7 @@ export default function StaffProfilePage() {
         <div className="mx-auto w-full max-w-[1120px]">
           <button
             type="button"
-            onClick={() => navigate('/app/staff')}
+            onClick={() => navigate(homePath)}
             className="flex size-10 items-center justify-center rounded-[12px] bg-white/10 text-white outline-none transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#8DC63F]"
             aria-label={t('common.back')}
           >
@@ -40,7 +43,7 @@ export default function StaffProfilePage() {
             {name}
           </h1>
           <span className="rounded-full bg-[#164D46] px-2.5 py-1 font-inter text-xs font-bold text-[#C4EA92]">
-            {t('role.STAFF')}
+            {roleLabel}
           </span>
         </div>
       </header>

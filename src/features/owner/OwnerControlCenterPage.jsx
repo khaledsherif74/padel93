@@ -1,10 +1,7 @@
-import { Download, LockKeyhole, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import { Download, LockKeyhole, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  useGetPermissionsQuery,
-  useUpdatePermissionsMutation,
-  useResetPermissionsMutation,
   useGetSettingsQuery,
   useUpdateSettingsMutation,
   useGetAuditQuery,
@@ -19,36 +16,6 @@ import Select from '../../shared/ui/Select';
 import Badge from '../../shared/ui/Badge';
 import Skeleton from '../../shared/ui/Skeleton';
 import ErrorState from '../../shared/ui/ErrorState';
-
-const STAFF_KEYS = [
-  'income.create',
-  'income.createCard',
-  'expense.create',
-  'transfer.create',
-  'transfer.cancel',
-  'appointment.seeCustomerPhone',
-  'goal.view',
-  'attendance.clock',
-];
-
-const ACCOUNTANT_KEYS = [
-  'income.verify',
-  'expense.create',
-  'transfer.confirm',
-  'transfer.cancel',
-  'payout.create',
-  'bookly.sync',
-  'reports.view',
-  'balances.view',
-  'shifts.list',
-  'appointment.seeCustomerPhone',
-  'appointment.viewOtherDays',
-  'goal.view',
-  'attendance.view',
-  'attendance.adjust',
-  'schedule.manage',
-  'payroll.manage',
-];
 
 const ACTION_KEYS = [
   'user.login',
@@ -65,32 +32,14 @@ const ACTION_KEYS = [
 
 export default function OwnerControlCenterPage() {
   const { t, i18n } = useTranslation();
-  const [tab, setTab] = useState('permissions');
-  const permissionsQuery = useGetPermissionsQuery();
+  const [tab, setTab] = useState('activity');
   const settingsQuery = useGetSettingsQuery();
-  const [updatePermissions, permissionsState] = useUpdatePermissionsMutation();
-  const [resetPermissions, resetState] = useResetPermissionsMutation();
   const [updateSettings, settingsState] = useUpdateSettingsMutation();
-  const [permissions, setPermissions] = useState(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-
-  useEffect(() => {
-    if (permissionsQuery.data) setPermissions(structuredClone(permissionsQuery.data.permissions));
-  }, [permissionsQuery.data]);
 
   useEffect(() => {
     if (settingsQuery.data) setMaintenanceMode(Boolean(settingsQuery.data.maintenanceMode));
   }, [settingsQuery.data]);
-
-  async function savePermissions() {
-    if (!permissions) return;
-    await updatePermissions(permissions).unwrap();
-  }
-
-  async function restoreDefaults() {
-    const data = await resetPermissions().unwrap();
-    setPermissions(data.permissions);
-  }
 
   async function saveMaintenance() {
     await updateSettings({ maintenanceMode }).unwrap();
@@ -107,9 +56,6 @@ export default function OwnerControlCenterPage() {
       />
 
       <div className="flex max-w-full gap-2 overflow-x-auto rounded-2xl bg-navy p-1.5">
-        <TabButton active={tab === 'permissions'} onClick={() => setTab('permissions')}>
-          {t('owner.permissionsTab')}
-        </TabButton>
         <TabButton active={tab === 'activity'} onClick={() => setTab('activity')}>
           {t('owner.activityTab')}
         </TabButton>
@@ -117,21 +63,6 @@ export default function OwnerControlCenterPage() {
           {t('owner.maintenanceTab')}
         </TabButton>
       </div>
-
-      {tab === 'permissions' && (
-        <PermissionsPanel
-          data={permissions}
-          isLoading={permissionsQuery.isLoading}
-          error={permissionsQuery.error}
-          saving={permissionsState.isLoading}
-          resetting={resetState.isLoading}
-          onRetry={permissionsQuery.refetch}
-          onChange={setPermissions}
-          onSave={savePermissions}
-          onReset={restoreDefaults}
-          t={t}
-        />
-      )}
 
       {tab === 'activity' && <ActivityPanel locale={locale} t={t} />}
 
@@ -145,119 +76,6 @@ export default function OwnerControlCenterPage() {
         />
       )}
     </div>
-  );
-}
-
-function PermissionsPanel({
-  data,
-  isLoading,
-  error,
-  saving,
-  resetting,
-  onRetry,
-  onChange,
-  onSave,
-  onReset,
-  t,
-}) {
-  if (isLoading) return <Skeleton className="h-[560px] w-full" />;
-  if (error) return <ErrorState title={t('owner.permissionsLoadError')} onRetry={onRetry} />;
-
-  const update = (role, key, value) => {
-    onChange((current) => ({ ...current, [role]: { ...current[role], [key]: value } }));
-  };
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="border-b border-navy/10 p-5 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="font-cairo text-xs font-bold uppercase tracking-[0.15em] text-ball">
-              {t('owner.permissionsEyebrow')}
-            </p>
-            <h2 className="mt-1 font-cairo text-2xl font-black text-navy">
-              {t('owner.permissionsTitle')}
-            </h2>
-            <p className="mt-2 max-w-2xl font-tajawal text-sm leading-7 text-navy/55">
-              {t('owner.permissionsDescription')}
-            </p>
-          </div>
-          <Badge tone="success">{t('owner.ownerAlwaysFull')}</Badge>
-        </div>
-      </div>
-
-      <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-2">
-        <PermissionGroup
-          role="STAFF"
-          keys={STAFF_KEYS}
-          data={data?.STAFF}
-          onChange={update}
-          t={t}
-        />
-        <PermissionGroup
-          role="ACCOUNTANT"
-          keys={ACCOUNTANT_KEYS}
-          data={data?.ACCOUNTANT}
-          onChange={update}
-          t={t}
-        />
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-navy/10 p-5 sm:flex-row sm:justify-end sm:p-6">
-        <Button variant="ghost" onClick={onReset} loading={resetting}>
-          <RotateCcw className="size-4" aria-hidden="true" />
-          {t('owner.backToDefault')}
-        </Button>
-        <Button onClick={onSave} loading={saving}>
-          <Save className="size-4" aria-hidden="true" />
-          {t('owner.savePermissions')}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function PermissionGroup({ role, keys, data, onChange, t }) {
-  return (
-    <section className="rounded-2xl border border-navy/10 overflow-hidden">
-      <div className="bg-navy p-5 text-white">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-cairo text-xs font-bold uppercase tracking-[0.13em] text-ball">
-              {t(`role.${role}`)}
-            </p>
-            <h3 className="mt-1 font-cairo text-lg font-extrabold">
-              {t('owner.permissionGroupTitle', { role: t(`role.${role}`) })}
-            </h3>
-          </div>
-          <ShieldCheck className="size-6 text-ball" aria-hidden="true" />
-        </div>
-      </div>
-
-      <div className="divide-y divide-navy/8 bg-white">
-        {keys.map((key) => (
-          <label
-            key={key}
-            className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 text-navy hover:bg-navy/[0.02]"
-          >
-            <span className="min-w-0">
-              <span className="block font-cairo text-sm font-semibold text-navy">
-                {permissionLabel(key, t)}
-              </span>
-              <span className="mt-0.5 block font-tajawal text-xs leading-5 text-navy/50">
-                {permissionDescription(key, t)}
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={Boolean(data?.[key])}
-              onChange={(event) => onChange(role, key, event.target.checked)}
-              className="size-5 shrink-0 accent-[var(--ball)]"
-            />
-          </label>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -476,56 +294,4 @@ function TabButton({ active, onClick, children }) {
       {children}
     </button>
   );
-}
-
-function permissionLabel(key, t) {
-  const labels = {
-    'income.create': 'incomeCreate',
-    'income.createCard': 'incomeCreateCard',
-    'income.verify': 'incomeVerify',
-    'expense.create': 'expenseCreate',
-    'transfer.create': 'transferCreate',
-    'transfer.confirm': 'transferConfirm',
-    'transfer.cancel': 'transferCancel',
-    'payout.create': 'payoutCreate',
-    'bookly.sync': 'booklySync',
-    'reports.view': 'reportsView',
-    'balances.view': 'balancesView',
-    'shifts.list': 'shiftsList',
-    'appointment.seeCustomerPhone': 'seeCustomerPhone',
-    'appointment.viewOtherDays': 'viewOtherDays',
-    'goal.view': 'goalView',
-    'attendance.clock': 'attendanceClock',
-    'attendance.view': 'attendanceView',
-    'attendance.adjust': 'attendanceAdjust',
-    'schedule.manage': 'scheduleManage',
-    'payroll.manage': 'payrollManage',
-  };
-  return t(`owner.permission.${labels[key] ?? key}`, key);
-}
-
-function permissionDescription(key, t) {
-  const hints = {
-    'income.create': 'incomeCreate',
-    'income.createCard': 'incomeCreateCard',
-    'income.verify': 'incomeVerify',
-    'expense.create': 'expenseCreate',
-    'transfer.create': 'transferCreate',
-    'transfer.confirm': 'transferConfirm',
-    'transfer.cancel': 'transferCancel',
-    'payout.create': 'payoutCreate',
-    'bookly.sync': 'booklySync',
-    'reports.view': 'reportsView',
-    'balances.view': 'balancesView',
-    'shifts.list': 'shiftsList',
-    'appointment.seeCustomerPhone': 'seeCustomerPhone',
-    'appointment.viewOtherDays': 'viewOtherDays',
-    'goal.view': 'goalView',
-    'attendance.clock': 'attendanceClock',
-    'attendance.view': 'attendanceView',
-    'attendance.adjust': 'attendanceAdjust',
-    'schedule.manage': 'scheduleManage',
-    'payroll.manage': 'payrollManage',
-  };
-  return t(`owner.permissionHint.${hints[key] ?? key}`, t('owner.permissionDescriptionFallback'));
 }

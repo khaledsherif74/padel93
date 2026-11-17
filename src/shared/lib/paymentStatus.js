@@ -1,5 +1,4 @@
 export function getPaymentStatus({ state, collected = 0, due = 0, free = false }) {
-  if (state === 'ON_ACCOUNT') return 'ON_ACCOUNT';
   if (['PAID', 'OVERPAID'].includes(state) || free) return 'PAID';
   if (due > 0 && collected > 0) return 'PARTIAL';
   return 'UNPAID';
@@ -36,7 +35,6 @@ export function getClosingRowPaymentStatus(row) {
 const STYLES = {
   PAID: { background: '#dcfce7', border: 'border-emerald-300', badgeTone: 'success' },
   PARTIAL: { background: '#fef3c7', border: 'border-amber-300', badgeTone: 'warning' },
-  ON_ACCOUNT: { background: '#dbeafe', border: 'border-blue-300', badgeTone: 'info' },
   UNPAID: { background: '#ffffff', border: 'border-navy/10', badgeTone: 'danger' },
 };
 const UNPAID_CLOSING = { background: '#fee2e2', border: 'border-red-300', badgeTone: 'danger' };

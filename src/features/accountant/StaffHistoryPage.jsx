@@ -66,7 +66,9 @@ export default function StaffHistoryPage() {
       >
         {shifts.map((shift) => (
           <li key={shift.id}>
-            <Card className="space-y-1 p-3">
+            <Card
+              className={`space-y-1 border p-3 ${Number(shift.variance ?? 0) < 0 ? 'border-[#E5484D] bg-[#FFF1F1]' : 'border-[#E2E8F0]'}`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <p className="font-tajawal text-sm text-navy">
                   {formatDateTime(shift.openedAt, locale)}
@@ -82,8 +84,8 @@ export default function StaffHistoryPage() {
               )}
               <p className="font-cairo text-sm font-bold text-navy">
                 {t('accountant.shiftExpected')}: {money(shift.expectedCash)}
-                {shift.variance
-                  ? ` · ${t('accountant.shiftVariance')}: ${money(shift.variance)}`
+                {shift.variance != null
+                  ? ` · ${t('accountant.shiftVariance')}: ${money(shift.variance)} · ${t('staff.closingCashNow')}: ${money(shift.countedCash)}`
                   : ''}
               </p>
             </Card>

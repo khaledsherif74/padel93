@@ -5,14 +5,12 @@ import {
   ReceiptText,
   RefreshCw,
   UserPlus,
-  WalletCards,
   BarChart3,
 } from 'lucide-react';
 import { FEATURES } from '../../shared/config/features';
 
 const TILES = [
   { to: '/app/accountant/team', key: 'accountant.navTeam', icon: UserPlus },
-  { to: '/app/accountant/shifts', key: 'accountant.navShifts', icon: WalletCards },
   { to: '/app/accountant/reports', key: 'accountant.navReports', icon: BarChart3 },
   {
     to: '/app/accountant/expenses',

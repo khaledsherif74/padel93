@@ -34,13 +34,14 @@ function dynamicTranslationKeys() {
     ...['PENDING', 'CONFIRMED', 'DISPUTED', 'RESOLVED', 'CANCELLED'].map(
       (value) => `transferStatus.${value}`,
     ),
-    ...['ON_ACCOUNT', 'PAID', 'PARTIAL', 'UNPAID', 'OVERPAID', 'UNKNOWN'].map(
-      (value) => `payment.${value}`,
-    ),
+    ...['PAID', 'PARTIAL', 'UNPAID', 'OVERPAID', 'UNKNOWN'].map((value) => `payment.${value}`),
     ...['NOT_REQUIRED', 'PENDING', 'VERIFIED', 'REJECTED'].map((value) => `verification.${value}`),
     ...['PENDING', 'APPROVED', 'REJECTED', 'RESOLVED'].map((value) => `paymentFlagStatus.${value}`),
     ...['OWNER', 'AUTO_UNDERPAYMENT'].map((value) => `paymentFlagOrigin.${value}`),
     ...['OPEN', 'CLOSED'].map((value) => `accountant.shiftStatus.${value}`),
+    ...['OPEN', 'UNRECONCILED', 'GAP', 'PARTIAL', 'COVERED', 'OK'].map(
+      (value) => `accountant.reconciliation.${value}`,
+    ),
     ...['PENDING', 'CONFIRMED', 'DISPUTED', 'RESOLVED', 'CANCELLED'].map(
       (value) => `accountant.transferStatus.${value}`,
     ),
@@ -84,6 +85,11 @@ function dynamicTranslationKeys() {
     'attendanceAdjust',
     'scheduleManage',
     'payrollManage',
+    'appFinance',
+    'appAttendance',
+    'appBookings',
+    'appLoyalty',
+    'appWhatsappBot',
   ];
   for (const namespace of ['permission', 'permissionHint']) {
     keys.push(...ownerPermissionKeys.map((value) => `owner.${namespace}.${value}`));

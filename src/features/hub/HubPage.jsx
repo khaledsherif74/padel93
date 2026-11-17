@@ -106,7 +106,6 @@ export default function HubPage() {
   const hub = useGetHubQuery(user?.id, { refetchOnMountOrArgChange: true });
   const tiles = (hub.data?.services ?? []).map(resolveTile).filter(Boolean);
 
-  // R13: STAFF lands on their single tile
   if (!hub.isLoading && !hub.isError) {
     if (role === 'STAFF' && tiles.length === 1 && tiles[0].mode === 'internal') {
       return <Navigate to={tiles[0].path} replace />;

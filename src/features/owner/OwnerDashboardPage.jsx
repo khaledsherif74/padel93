@@ -1,74 +1,22 @@
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  BookOpenCheck,
-  CalendarDays,
-  RefreshCw,
-  CircleDollarSign,
-  ClipboardCheck,
-  HandCoins,
-  ReceiptText,
-  ShieldCheck,
-  WalletCards,
-  UsersRound,
-} from 'lucide-react';
-import { useMemo } from 'react';
+import { ArrowRight, CalendarDays, Settings2, UsersRound, WalletCards } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  useGetDashboardBalancesQuery,
-  useGetGoalQuery,
-} from '../../app/api';
+import { useGetDashboardBalancesQuery, useGetGoalQuery } from '../../app/api';
 import { currentMonth } from '../../shared/lib/date';
 import { formatEgpWithCurrency } from '../../shared/lib/money';
-import PageHeader from '../../shared/ui/PageHeader';
-import Card from '../../shared/ui/Card';
-import KpiCard from '../../shared/ui/KpiCard';
 import Badge from '../../shared/ui/Badge';
-import Button from '../../shared/ui/Button';
-import Skeleton from '../../shared/ui/Skeleton';
 import ErrorState from '../../shared/ui/ErrorState';
-
-const KPI_ITEMS = [
-  ['drawer', 'owner.kpiDrawer', WalletCards],
-  ['accountant', 'owner.kpiAccountant', CircleDollarSign],
-  ['inTransit', 'owner.kpiTransit', HandCoins],
-  ['pendingExceptions', 'owner.kpiExceptions', AlertTriangle],
-  ['pendingExpenseApprovals', 'owner.kpiExpenseApprovals', ReceiptText],
-  ['unverifiedPayments', 'owner.kpiUnverified', ClipboardCheck],
-  ['disputedTransfers', 'owner.kpiDisputed', ShieldCheck],
-  ['openShifts', 'owner.kpiOpenShifts', CalendarDays],
-  ['booklyChanges', 'owner.kpiBooklyChanges', RefreshCw],
-];
+import Skeleton from '../../shared/ui/Skeleton';
 
 export default function OwnerDashboardPage() {
   const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
   const month = currentMonth();
   const balances = useGetDashboardBalancesQuery();
   const goal = useGetGoalQuery(month, { refetchOnMountOrArgChange: true, refetchOnFocus: true });
-  const locale = i18n.language === 'ar' ? 'ar-EG' : 'en-US';
+  const money = (value) => formatEgpWithCurrency(value ?? 0, locale);
 
-  const valueFor = useMemo(() => {
-    const cash = balances.data?.cash ?? {};
-    const todo = balances.data?.todo ?? {};
-
-    return {
-      drawer: formatEgpWithCurrency(cash.drawer ?? 0, locale),
-      accountant: formatEgpWithCurrency(cash.accountant ?? 0, locale),
-      inTransit: formatEgpWithCurrency(cash.inTransit ?? 0, locale),
-      pendingExceptions: todo.pendingExceptions ?? 0,
-      pendingExpenseApprovals: todo.pendingExpenseApprovals ?? 0,
-      unverifiedPayments: todo.unverifiedPayments ?? 0,
-      disputedTransfers: todo.disputedTransfers ?? 0,
-      openShifts: todo.openShifts ?? 0,
-      booklyChanges: todo.unacknowledgedBooklyChanges ?? 0,
-    };
-  }, [balances.data, locale]);
-
-  if (balances.isLoading) {
-    return <OwnerDashboardSkeleton />;
-  }
-
+  if (balances.isLoading) return <OwnerDashboardSkeleton />;
   if (balances.isError) {
     return (
       <ErrorState
@@ -79,228 +27,229 @@ export default function OwnerDashboardPage() {
     );
   }
 
-  const goalProgress = Math.min(100, Math.max(0, (goal.data?.progress ?? 0) * 100));
-  const hasGoal = goal.data?.goalHours != null;
-  const goalAchievable = goal.data?.achievable !== false;
+  const cash = balances.data?.cash ?? {};
+  const todo = balances.data?.todo ?? {};
+  const totalCash =
+    Number(cash.drawer ?? 0) +
+    Number(cash.accountant ?? 0) +
+    Number(cash.owner ?? 0) +
+    Number(cash.inTransit ?? 0);
+  const goalProgress = Math.max(0, Math.min(100, Number(goal.data?.progress ?? 0) * 100));
+  const pendingApprovals =
+    Number(todo.pendingPaymentFlags ?? 0) + Number(todo.pendingExpenseApprovals ?? 0);
+  const attention = [
+    {
+      to: '/app/owner/inbox',
+      label: t('owner.ownerInboxAttention'),
+      value: pendingApprovals,
+      tone: pendingApprovals ? 'amber' : 'neutral',
+      hint: t('owner.ownerInboxAttentionHint'),
+    },
+    {
+      to: '/app/accountant/verification',
+      label: t('owner.paymentVerificationAttention'),
+      value: todo.unverifiedPayments ?? 0,
+      tone: todo.unverifiedPayments ? 'amber' : 'neutral',
+      hint: money(todo.unverifiedAmount),
+    },
+    {
+      to: '/app/accountant/handovers',
+      label: t('accountant.disputedGap'),
+      value: todo.disputedTransfers ?? 0,
+      tone: todo.disputedTransfers ? 'red' : 'neutral',
+      hint: money(cash.disputedGap),
+    },
+    {
+      to: '/app/accountant/staff-history',
+      label: t('accountant.shiftsAttention'),
+      value: todo.shiftsWithVariance ?? 0,
+      tone: todo.shiftsWithVariance ? 'red' : 'neutral',
+      hint: t('accountant.shiftsAttentionHint'),
+    },
+    {
+      to: '/app/accountant/bookly',
+      label: t('accountant.booklyChanges'),
+      value: todo.unacknowledgedBooklyChanges ?? 0,
+      tone: todo.unacknowledgedBooklyChanges ? 'amber' : 'neutral',
+      hint: t('accountant.booklyChanges'),
+    },
+  ];
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-7">
-      <PageHeader
-        eyebrow={t('owner.eyebrow')}
-        title={t('owner.dashboardTitle')}
-        description={t('owner.dashboardDescription')}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link to="/app/owner/inbox">
-              <Button>
-                <ClipboardCheck className="size-4" aria-hidden="true" />
-                {t('owner.openInbox')}
-              </Button>
-            </Link>
-            <Link to="/app/owner/users">
-              <Button variant="ghost">
-                <UsersRound className="size-4" aria-hidden="true" />
-                {t('owner.users')}
-              </Button>
-            </Link>
-          </div>
-        }
-      />
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label={t('owner.kpiStrip')}>
-        {KPI_ITEMS.map(([key, label, Icon]) => (
-          <KpiCard
-            key={key}
-            label={t(label)}
-            value={valueFor[key]}
-            detail={key.includes('pending') || key === 'unverifiedPayments' || key === 'disputedTransfers' || key === 'openShifts' || key === 'booklyChanges' ? t('owner.actionNeeded') : t('owner.currentRecorded')}
-            icon={Icon}
-          />
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="overflow-hidden">
-          <div className="bg-navy p-6 text-white sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="font-cairo text-xs font-bold uppercase tracking-[0.15em] text-ball">
-                  {t('owner.cashEyebrow')}
-                </p>
-                <h2 className="mt-1 font-cairo text-2xl font-black">
-                  {t('owner.cashTitle')}
-                </h2>
-                <p className="mt-2 max-w-xl font-tajawal text-sm leading-7 text-white/70">
-                  {t('owner.cashDescription')}
-                </p>
-              </div>
-              <Badge tone="success">{t('owner.live')}</Badge>
-            </div>
-          </div>
-
-          <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
-            <MoneyTile label={t('accountant.drawer')} value={valueFor.drawer} />
-            <MoneyTile label={t('accountant.accountant')} value={valueFor.accountant} />
-            <MoneyTile label={t('accountant.inTransit')} value={valueFor.inTransit} />
-            <MoneyTile label={t('accountant.owner')} value={formatEgpWithCurrency(balances.data?.cash?.owner ?? 0, locale)} />
-          </div>
-
-          <div className="grid gap-3 border-t border-navy/10 p-5 sm:grid-cols-2 sm:p-6">
-            <BalanceNote
-              label={t('accountant.disputedGap')}
-              value={formatEgpWithCurrency(balances.data?.cash?.disputedGap ?? 0, locale)}
-              tone="warning"
-            />
-            <BalanceNote
-              label={t('accountant.shortage')}
-              value={formatEgpWithCurrency(balances.data?.cash?.shortage ?? 0, locale)}
-              tone="danger"
-            />
-          </div>
-        </Card>
-
-        <Card className="p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-cairo text-xs font-bold uppercase tracking-[0.15em] text-ball">
-                {t('owner.goalEyebrow')}
-              </p>
-              <h2 className="mt-1 font-cairo text-2xl font-black text-navy">
-                {t('accountant.monthlyGoal')}
-              </h2>
-            </div>
-            <Badge tone={goalAchievable ? 'success' : 'warning'}>
-              {hasGoal ? (goalAchievable ? t('owner.achievable') : t('owner.notAchievable')) : t('owner.notSet')}
-            </Badge>
-          </div>
-
-          {goal.isLoading ? (
-            <div className="mt-6 space-y-3">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-4 w-1/2" />
-            </div>
-          ) : hasGoal ? (
-            <>
-              <div className="mt-6 flex items-end justify-between gap-3">
-                <p className="font-cairo text-4xl font-black text-navy">
-                  {Math.round(goalProgress)}%
-                </p>
-                <p className="font-tajawal text-sm text-navy/55">
-                  {goal.data.completedHours ?? 0} {t('staff.hours')} / {goal.data.goalHours ?? 0} {t('staff.hours')}
-                </p>
-              </div>
-
-              <div className="mt-4 h-3 overflow-hidden rounded-full bg-navy/8">
-                <div
-                  className="h-full rounded-full bg-ball transition-[width] duration-500"
-                  style={{ width: `${goalProgress}%` }}
-                />
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <Stat label={t('owner.remaining')} value={`${goal.data.remainingToPlayHours ?? 0} ${t('staff.hours')}`} />
-                <Stat label={t('owner.capacity')} value={`${goal.data.remainingCapacityHours ?? 0} ${t('staff.hours')}`} />
-              </div>
-            </>
-          ) : (
-            <div className="mt-8 rounded-2xl border border-navy/10 bg-white p-5 text-center">
-              <p className="font-cairo text-sm font-bold text-navy">{t('owner.noGoal')}</p>
-              <Link to="/app/owner/settings" className="mt-3 inline-flex">
-                <Button variant="ghost">{t('owner.setGoal')}</Button>
-              </Link>
-            </div>
-          )}
-        </Card>
-      </section>
-
-      <Card className="p-6 sm:p-7">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="relative z-40 mx-auto -mt-5 w-full max-w-[1280px] space-y-5 font-inter text-[#0E1B2B]">
+      <section
+        className="rounded-[20px] border border-[#E2E8F0] bg-white p-4 shadow-[0_8px_24px_rgba(0,35,70,0.10)] sm:p-5"
+        aria-label={t('owner.cashTitle')}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-cairo text-xs font-bold uppercase tracking-[0.15em] text-ball">
-              {t('owner.quickActionsEyebrow')}
+            <p className="text-sm font-semibold text-[#4A5A70]">{t('owner.cashTitle')}</p>
+            <p className="mt-1 text-3xl font-extrabold tracking-tight text-[#002346] sm:text-4xl">
+              {money(totalCash)}
             </p>
-            <h2 className="mt-1 font-cairo text-2xl font-black text-navy">
-              {t('owner.quickActionsTitle')}
-            </h2>
           </div>
-          <p className="font-tajawal text-sm text-navy/55">
-            {t('owner.quickActionsHint')}
-          </p>
+          <Badge tone="success">{t('owner.live')}</Badge>
         </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <MoneyTile label={t('accountant.drawer')} value={money(cash.drawer)} />
+          <MoneyTile label={t('accountant.accountant')} value={money(cash.accountant)} />
+          <MoneyTile label={t('accountant.inTransit')} value={money(cash.inTransit)} />
+        </div>
+      </section>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <QuickAction to="/app/owner/bookings" icon={CalendarDays} label={t('owner.navAppointments')} text={t('owner.bookingsDescription')} />
-          <QuickAction to="/app/owner/inbox" icon={ClipboardCheck} label={t('owner.inbox')} text={t('owner.inboxDescription')} />
-          <QuickAction to="/app/accountant/reports" icon={BookOpenCheck} label={t('accountant.navReports')} text={t('owner.reportsDescription')} />
-          <QuickAction to="/app/owner/control" icon={ShieldCheck} label={t('owner.controlCenter')} text={t('owner.controlDescription')} />
+      <section className="space-y-3" aria-labelledby="owner-attention-heading">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="owner-attention-heading" className="text-lg font-extrabold text-[#002346]">
+            {t('owner.waitingDecision')}
+          </h2>
+          <Link
+            to="/app/owner/inbox"
+            className="text-sm font-bold text-[#0B3B6E] underline underline-offset-2"
+          >
+            {t('owner.openInbox')}
+          </Link>
         </div>
-      </Card>
+        <div className="space-y-2">
+          {attention.map((item) => (
+            <AttentionRow key={item.to} {...item} />
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-[18px] border border-[#E2E8F0] bg-white p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-extrabold text-[#002346]">{t('accountant.monthlyGoal')}</h2>
+          <Badge tone={goal.data?.achievable === false ? 'warning' : 'success'}>
+            {goal.data?.goalHours != null ? `${Math.round(goalProgress)}%` : t('owner.notSet')}
+          </Badge>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+          <span className="font-semibold text-[#4A5A70]">
+            {goal.data?.completedHours ?? 0} / {goal.data?.goalHours ?? 0} {t('staff.hours')}
+          </span>
+          <span className="font-bold tabular-nums text-[#002346]">
+            {goal.data?.goalHours != null ? `${Math.round(goalProgress)}%` : '—'}
+          </span>
+        </div>
+        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E5EAF1]">
+          <div className="h-full rounded-full bg-[#8DC63F]" style={{ width: `${goalProgress}%` }} />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-extrabold text-[#002346]">{t('owner.workspaceSections')}</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <WorkspaceCard
+            title={t('owner.navOperations')}
+            description={t('owner.operationsGroupHint')}
+            icon={CalendarDays}
+            links={[
+              ['/app/owner/bookings', t('owner.navAppointments')],
+              ['/app/accountant/bookly', t('owner.navBookly')],
+            ]}
+          />
+          <WorkspaceCard
+            title={t('owner.navFinance')}
+            description={t('owner.financeGroupHint')}
+            icon={WalletCards}
+            links={[
+              ['/app/owner/inbox', t('owner.navInbox')],
+              ['/app/owner/payment-flags', t('owner.paymentFlags')],
+              ['/app/accountant/reports', t('owner.navReports')],
+              ['/app/owner/notas', t('owner.notaManagementTitle')],
+            ]}
+          />
+          <WorkspaceCard
+            title={t('owner.navTeam')}
+            description={t('owner.teamGroupHint')}
+            icon={UsersRound}
+            links={[
+              ['/app/owner/team', t('owner.navTeam')],
+              ['/app/accountant/staff-history', t('accountant.staffHistoryTitle')],
+              ['/app/accountant/attendance', t('owner.navAttendance')],
+              ['/app/accountant/schedule', t('owner.navSchedule')],
+            ]}
+          />
+          <WorkspaceCard
+            title={t('owner.navSystem')}
+            description={t('owner.systemGroupHint')}
+            icon={Settings2}
+            links={[
+              ['/app/owner/settings', t('owner.navSettings')],
+              ['/app/owner/control', t('owner.navControl')],
+              ['/app/profile', t('common.profile')],
+            ]}
+          />
+        </div>
+      </section>
     </div>
   );
 }
 
 function MoneyTile({ label, value }) {
   return (
-    <div className="border-b border-navy/10 p-5 last:border-b-0 sm:border-e lg:border-b-0 lg:last:border-e-0">
-      <p className="font-cairo text-xs font-semibold text-navy/50">{label}</p>
-      <p className="mt-2 font-cairo text-xl font-black text-navy">{value}</p>
+    <div className="min-w-0 rounded-[12px] bg-[#F3F5F9] px-2.5 py-3 sm:px-3">
+      <p className="truncate text-[11px] font-semibold text-[#4A5A70] sm:text-xs">{label}</p>
+      <p className="mt-1 break-words text-sm font-extrabold tabular-nums text-[#002346] sm:text-base">
+        {value}
+      </p>
     </div>
   );
 }
 
-function BalanceNote({ label, value, tone }) {
-  const toneClasses = {
-    warning: 'border-amber-200 bg-amber-50 text-amber-900',
-    danger: 'border-red-200 bg-red-50 text-red-900',
-  };
-
-  return (
-    <div className={`rounded-xl border p-4 ${toneClasses[tone]}`}>
-      <p className="font-cairo text-xs font-semibold opacity-75">{label}</p>
-      <p className="mt-1 font-cairo text-base font-black">{value}</p>
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-xl border border-navy/10 p-4">
-      <p className="font-cairo text-xs font-semibold text-navy/45">{label}</p>
-      <p className="mt-1 font-tajawal text-sm font-bold text-navy">{value}</p>
-    </div>
-  );
-}
-
-function QuickAction({ to, icon: Icon, label, text }) {
+function AttentionRow({ to, label, value, hint, tone }) {
+  const dot = tone === 'red' ? 'bg-[#E5484D]' : tone === 'amber' ? 'bg-[#F5A524]' : 'bg-[#8DC63F]';
   return (
     <Link
       to={to}
-      className="group rounded-2xl border border-navy/10 bg-white p-5 outline-none transition hover:border-edge/40 hover:shadow-card focus-visible:ring-2 focus-visible:ring-edge"
+      className="flex min-h-[54px] items-center justify-between gap-3 rounded-[13px] border border-[#E2E8F0] bg-white px-3.5 py-2.5 outline-none transition hover:border-[#B7C7DA] focus-visible:ring-2 focus-visible:ring-[#01649B]"
     >
-      <div className="flex size-11 items-center justify-center rounded-full border border-ball text-ball">
-        <Icon className="size-5" strokeWidth={1.8} aria-hidden="true" />
-      </div>
-      <div className="mt-4 flex items-start justify-between gap-3">
-        <h3 className="font-cairo text-base font-extrabold text-navy">{label}</h3>
-        <ArrowUpRight className="size-4 text-edge transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
-      </div>
-      <p className="mt-2 font-tajawal text-sm leading-6 text-navy/55">{text}</p>
+      <span className="flex min-w-0 items-center gap-3">
+        <span className={`size-2.5 shrink-0 rounded-full ${dot}`} />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-[#20334B]">{label}</span>
+          <span className="block truncate text-xs text-[#8593A6]">{hint}</span>
+        </span>
+      </span>
+      <span className="shrink-0 text-sm font-extrabold tabular-nums text-[#002346]">{value}</span>
     </Link>
+  );
+}
+
+function WorkspaceCard({ title, description, icon: Icon, links }) {
+  return (
+    <article className="rounded-[16px] border border-[#E2E8F0] bg-white p-4 shadow-[0_2px_8px_rgba(0,35,70,0.04)]">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-[#E6EEF8] text-[#0B3B6E]">
+          <Icon className="size-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="font-extrabold text-[#002346]">{title}</h3>
+          <p className="mt-1 text-xs leading-5 text-[#64748B]">{description}</p>
+        </div>
+      </div>
+      <div className="mt-3 space-y-1">
+        {links.map(([to, label]) => (
+          <Link
+            key={to}
+            to={to}
+            className="flex min-h-9 items-center justify-between gap-2 rounded-lg px-2 text-sm font-semibold text-[#0B3B6E] hover:bg-[#F3F5F9]"
+          >
+            <span>{label}</span>
+            <ArrowRight className="size-3.5 rtl:rotate-180" aria-hidden="true" />
+          </Link>
+        ))}
+      </div>
+    </article>
   );
 }
 
 function OwnerDashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <Skeleton className="h-28 w-full" />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-28" />)}
-      </div>
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Skeleton className="h-80" />
-        <Skeleton className="h-80" />
-      </div>
+    <div className="relative z-40 -mt-5 space-y-4">
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-64 w-full" />
+      <Skeleton className="h-48 w-full" />
     </div>
   );
 }

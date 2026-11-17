@@ -8,7 +8,7 @@ const ORIGINAL = [
   '/app/owner/payment-flags',
   '/app/accountant/verification',
   '/app/accountant/handovers',
-  '/app/accountant/shifts',
+  '/app/accountant/staff-history',
   '/app/accountant/reports',
   '/app/accountant/bookly',
   '/app/owner/users',
@@ -16,7 +16,7 @@ const ORIGINAL = [
   '/app/owner/corrections',
   '/app/owner/control',
 ];
-const ADDED = ['/app/accountant/inbox', '/app/accountant/staff', '/app/accountant/team'];
+const ADDED = ['/app/accountant/inbox', '/app/accountant/team'];
 const PHASE_4 = ['/app/accountant/attendance', '/app/accountant/schedule'];
 
 describe('owner navigation', () => {
@@ -24,7 +24,7 @@ describe('owner navigation', () => {
     const kept = ownerLinks.map((l) => l.to).filter((to) => ORIGINAL.includes(to));
     expect(kept).toEqual(ORIGINAL);
   });
-  it('adds only the Phase 2 finance pages and the two Phase 4 pages (attendance, schedule)', () => {
+  it('adds only the new finance, team, attendance and schedule links', () => {
     const extra = ownerLinks.map((l) => l.to).filter((to) => !ORIGINAL.includes(to));
     expect(extra.sort()).toEqual([...ADDED, ...PHASE_4].sort());
   });
@@ -32,7 +32,7 @@ describe('owner navigation', () => {
     const tos = ownerLinks.map((l) => l.to);
     expect(new Set(tos).size).toBe(tos.length);
     for (const l of ownerLinks) {
-      expect(l.key).toMatch(/^owner\./);
+      expect(l.key).toMatch(/^(owner|accountant)\./);
       expect(l.icon).toBeTruthy();
     }
   });

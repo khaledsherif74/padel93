@@ -8,11 +8,11 @@ export default function FinanceSubLayout() {
   const { t } = useTranslation();
   const role = useSelector(selectRole);
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {role === 'ACCOUNTANT' && (
         <Link
           to="/app/accountant"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl px-1 font-cairo text-sm font-bold text-edge outline-none focus-visible:ring-2 focus-visible:ring-edge"
+          className="inline-flex min-h-9 items-center gap-2 rounded-xl px-1 font-cairo text-sm font-bold text-edge outline-none focus-visible:ring-2 focus-visible:ring-edge"
         >
           <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
           {t('accountant.backToDashboard')}

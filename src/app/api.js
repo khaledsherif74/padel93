@@ -56,6 +56,8 @@ export const api = createApi({
     'Attendance',
     'Schedule',
     'Payroll',
+    'OwnerNota',
+    'OwnerNotaOwners',
   ],
   endpoints: (builder) => ({
     login: builder.mutation({
@@ -138,6 +140,10 @@ export const api = createApi({
     getFinanceStaffHistory: builder.query({
       query: (id) => `/finance/staff/${id}/history`,
       providesTags: ['Income', 'Transfer', 'Shift'],
+    }),
+    getFinanceStaffDailyHistory: builder.query({
+      query: (date) => ({ url: '/finance/staff-history', params: date ? { date } : undefined }),
+      providesTags: ['Income', 'Shift', 'OwnerNota'],
     }),
     getFinanceEdits: builder.query({
       query: (date) => ({ url: '/finance/edits', params: date ? { date } : undefined }),
@@ -286,6 +292,33 @@ export const api = createApi({
     getDashboardBalances: builder.query({
       query: () => '/dashboard/balances',
       providesTags: ['Dashboard', 'Shift', 'Income', 'Expense', 'Transfer', 'PaymentFlag'],
+    }),
+    createOwnerNota: builder.mutation({
+      query: (body) => ({ url: '/owner-notas', method: 'POST', body }),
+      invalidatesTags: ['Dashboard', 'Audit', 'OwnerNota', 'Shift'],
+    }),
+    getOwnerNotas: builder.query({
+      query: ({ limit = 100, cursor } = {}) => ({
+        url: '/owner-notas',
+        params: { limit, ...(cursor ? { cursor } : {}) },
+      }),
+      providesTags: ['OwnerNota'],
+    }),
+    getOwnerNotaOwners: builder.query({
+      query: () => '/owner-notas/owners',
+      providesTags: ['OwnerNotaOwners'],
+    }),
+    createOwnerNotaOwner: builder.mutation({
+      query: (body) => ({ url: '/owner-notas/owners', method: 'POST', body }),
+      invalidatesTags: ['OwnerNotaOwners', 'OwnerNota', 'Audit'],
+    }),
+    updateOwnerNotaOwner: builder.mutation({
+      query: ({ id, body }) => ({ url: `/owner-notas/owners/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['OwnerNotaOwners', 'OwnerNota', 'Audit'],
+    }),
+    updateOwnerNota: builder.mutation({
+      query: ({ id, body }) => ({ url: `/owner-notas/${id}`, method: 'PATCH', body }),
+      invalidatesTags: ['OwnerNota', 'Dashboard', 'Audit'],
     }),
     getDayReport: builder.query({
       query: (date) => ({ url: '/dashboard/day', params: date ? { date } : {} }),
@@ -584,6 +617,13 @@ export const {
   useGetSettingsQuery,
   useGetHubQuery,
   useGetDashboardBalancesQuery,
+  useCreateOwnerNotaMutation,
+  useGetOwnerNotasQuery,
+  useLazyGetOwnerNotasQuery,
+  useGetOwnerNotaOwnersQuery,
+  useCreateOwnerNotaOwnerMutation,
+  useUpdateOwnerNotaOwnerMutation,
+  useUpdateOwnerNotaMutation,
   useGetDayReportQuery,
   useGetMonthReportQuery,
   useGetYearReportQuery,
@@ -620,6 +660,7 @@ export const {
   useGetStaffUsersQuery,
   useGetFinanceStaffBoardQuery,
   useGetFinanceStaffHistoryQuery,
+  useGetFinanceStaffDailyHistoryQuery,
   useGetFinanceEditsQuery,
   useGetAttendanceMeQuery,
   useGetMyScheduleQuery,

@@ -15,25 +15,24 @@ import NotificationsPage from './features/staff/NotificationsPage';
 import FinanceSubLayout from './features/accountant/FinanceSubLayout';
 import DateAccessRequestsPage from './features/accountant/DateAccessRequestsPage';
 import RequestsInboxPage from './features/accountant/RequestsInboxPage';
-import StaffBoardPage from './features/accountant/StaffBoardPage';
-import StaffHistoryPage from './features/accountant/StaffHistoryPage';
+import StaffHistoryOverviewPage from './features/accountant/StaffHistoryOverviewPage';
 import TeamPage from './features/accountant/TeamPage';
 import HandoverPage from './features/staff/HandoverPage';
 import StaffHomePage from './features/staff/StaffHomePage';
 import AccountantDashboardPage from './features/accountant/AccountantDashboardPage';
 import VerificationQueuePage from './features/accountant/VerificationQueuePage';
 import HandoverInboxPage from './features/accountant/HandoverInboxPage';
-import AccountantShiftsPage from './features/accountant/ShiftsPage';
 import ReportsPage from './features/accountant/ReportsPage';
 import BooklyPage from './features/accountant/BooklyPage';
 import AccountantExpensesPage from './features/accountant/ExpensesPage';
 import OwnerDashboardPage from './features/owner/OwnerDashboardPage';
 import OwnerInboxPage from './features/owner/OwnerInboxPage';
-import OwnerUsersPage from './features/owner/OwnerUsersPage';
 import OwnerSettingsPage from './features/owner/OwnerSettingsPage';
 import OwnerControlCenterPage from './features/owner/OwnerControlCenterPage';
 import OwnerCorrectionsPage from './features/owner/OwnerCorrectionsPage';
 import OwnerBookingsPage from './features/owner/OwnerBookingsPage';
+import OwnerTeamPage from './features/owner/OwnerTeamPage';
+import OwnerNotaManagementPage from './features/owner/OwnerNotaManagementPage';
 import OwnerBookingDetailPage from './features/owner/OwnerBookingDetailPage';
 import PaymentFlagsPage from './features/paymentFlags/PaymentFlagsPage';
 import HubPage from './features/hub/HubPage';
@@ -59,7 +58,6 @@ function NotificationsRoute() {
   return role === 'STAFF' ? <Navigate to="/app/staff" replace /> : <NotificationsPage />;
 }
 
-// R13: STAFF visiting /app or /app/hub goes straight to /app/staff
 function AppIndexRedirect() {
   const role = useSelector(selectRole);
   return role === 'STAFF' ? (
@@ -70,12 +68,9 @@ function AppIndexRedirect() {
 }
 
 function HubRoute() {
-  const role = useSelector(selectRole);
-  if (role === 'STAFF') return <Navigate to="/app/staff" replace />;
   return <HubPage />;
 }
 
-// R13: block STAFF from non-finance routes
 function StaffBlocked({ to = '/app/staff' }) {
   return <Navigate to={to} replace />;
 }
@@ -98,23 +93,41 @@ export default function App() {
               <Route path="/app/staff/handover" element={<HandoverPage />} />
               <Route path="/app/staff/profile" element={<StaffProfilePage />} />
               <Route path="/app/staff/*" element={<Navigate to="/app/staff" replace />} />
-              {/* R13: STAFF cannot open attendance/schedule in the app */}
+
               <Route path="/app/attendance" element={<StaffBlocked />} />
               <Route path="/app/schedule" element={<StaffBlocked />} />
             </Route>
 
             <Route element={<RoleRoute roles={['ACCOUNTANT', 'OWNER']} />}>
               <Route path="/app/accountant" element={<AccountantDashboardPage />} />
+              <Route path="/app/accountant/profile" element={<StaffProfilePage />} />
+              <Route
+                path="/app/accountant/notas"
+                element={<Navigate to="/app/accountant/staff-history" replace />}
+              />
               <Route element={<FinanceSubLayout />}>
                 <Route path="/app/accountant/verification" element={<VerificationQueuePage />} />
                 <Route path="/app/accountant/handovers" element={<HandoverInboxPage />} />
-                <Route path="/app/accountant/shifts" element={<AccountantShiftsPage />} />
+                <Route
+                  path="/app/accountant/shifts"
+                  element={<Navigate to="/app/accountant/staff-history" replace />}
+                />
+                <Route
+                  path="/app/accountant/staff-history"
+                  element={<StaffHistoryOverviewPage />}
+                />
                 <Route path="/app/accountant/reports" element={<ReportsPage />} />
                 <Route path="/app/accountant/bookly" element={<BooklyPage />} />
                 <Route path="/app/accountant/requests" element={<DateAccessRequestsPage />} />
                 <Route path="/app/accountant/inbox" element={<RequestsInboxPage />} />
-                <Route path="/app/accountant/staff" element={<StaffBoardPage />} />
-                <Route path="/app/accountant/staff/:id" element={<StaffHistoryPage />} />
+                <Route
+                  path="/app/accountant/staff/:id"
+                  element={<Navigate to="/app/accountant/staff-history" replace />}
+                />
+                <Route
+                  path="/app/accountant/staff"
+                  element={<Navigate to="/app/accountant/staff-history" replace />}
+                />
                 <Route path="/app/accountant/team" element={<TeamPage />} />
                 <Route path="/app/accountant/attendance" element={<AttendanceBoardPage />} />
                 <Route path="/app/accountant/schedule" element={<SchedulePage />} />
@@ -134,7 +147,12 @@ export default function App() {
               <Route path="/app/owner/bookings" element={<OwnerBookingsPage />} />
               <Route path="/app/owner/bookings/:id" element={<OwnerBookingDetailPage />} />
               <Route path="/app/owner/payment-flags" element={<PaymentFlagsPage />} />
-              <Route path="/app/owner/users" element={<OwnerUsersPage />} />
+              <Route path="/app/owner/team" element={<OwnerTeamPage />} />
+              <Route
+                path="/app/owner/users"
+                element={<Navigate to="/app/owner/team?tab=users" replace />}
+              />
+              <Route path="/app/owner/notas" element={<OwnerNotaManagementPage />} />
               <Route path="/app/owner/settings" element={<OwnerSettingsPage />} />
               <Route path="/app/owner/corrections" element={<OwnerCorrectionsPage />} />
               <Route path="/app/owner/control" element={<OwnerControlCenterPage />} />

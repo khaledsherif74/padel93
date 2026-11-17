@@ -23,7 +23,7 @@ export default function BottomDock({
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
         <MetricCard label={totalBalanceLabel} value={totalBalanceValue} />
         <MetricCard label={handoverLabel} value={handoverValue} warning />
-        <div className="col-span-2 grid grid-cols-3 gap-2 lg:col-span-1">
+        <div className="col-span-2 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:col-span-1">
           {secondaryActions.map((action) => {
             const Icon = action.icon;
             const className = `flex min-h-[72px] min-w-0 flex-col items-center justify-center gap-2 rounded-[14px] border border-[#D5DDE7] bg-white px-1.5 py-2 text-[#002346] outline-none transition hover:border-[#8DC63F] hover:bg-[#F7FBF1] focus-visible:ring-2 focus-visible:ring-[#01649B] disabled:cursor-not-allowed disabled:opacity-45`;

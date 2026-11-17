@@ -46,10 +46,20 @@ function ResetPassword({ person, t }) {
   if (!open) {
     return (
       <>
-        <Button variant="ghost" onClick={() => { setOpen(true); setDone(false); }}>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setOpen(true);
+            setDone(false);
+          }}
+        >
           {t('accountant.resetPassword')}
         </Button>
-        {done && <span className="font-tajawal text-xs text-emerald-800">{t('accountant.passwordReset')}</span>}
+        {done && (
+          <span className="font-tajawal text-xs text-emerald-800">
+            {t('accountant.passwordReset')}
+          </span>
+        )}
       </>
     );
   }
@@ -63,18 +73,24 @@ function ResetPassword({ person, t }) {
         onChange={(event) => setPassword(event.target.value)}
         hint={t('accountant.passwordHint')}
       />
-      {state.error && <p className="font-tajawal text-sm text-red-700" role="alert">{errorMessage(state.error, t)}</p>}
+      {state.error && (
+        <p className="font-tajawal text-sm text-red-700" role="alert">
+          {errorMessage(state.error, t)}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button type="submit" loading={state.isLoading} disabled={password.length < 8}>
           {t('accountant.resetPassword')}
         </Button>
-        <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          {t('common.cancel')}
+        </Button>
       </div>
     </form>
   );
 }
 
-export default function TeamPage() {
+export default function TeamPage({ embedded = false }) {
   const { t } = useTranslation();
   const staff = useGetStaffUsersQuery();
   const [createUser, createState] = useCreateUserMutation();
@@ -103,19 +119,30 @@ export default function TeamPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        eyebrow={t('accountant.navSection')}
-        title={t('accountant.teamTitle')}
-        description={t('accountant.teamHint')}
-        actions={
-          !adding && <Button onClick={() => setAdding(true)}>{t('accountant.addStaff')}</Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          eyebrow={t('accountant.navSection')}
+          title={t('accountant.teamTitle')}
+          description={t('accountant.teamHint')}
+          actions={
+            !adding && <Button onClick={() => setAdding(true)}>{t('accountant.addStaff')}</Button>
+          }
+        />
+      )}
+      {embedded && !adding && (
+        <div className="flex justify-end">
+          <Button onClick={() => setAdding(true)}>{t('accountant.addStaff')}</Button>
+        </div>
+      )}
 
       {adding && (
         <Card className="p-4 sm:p-5">
           <form className="space-y-3" onSubmit={submit}>
-            <Input label={t('accountant.fullName')} value={form.name} onChange={(e) => patch({ name: e.target.value })} />
+            <Input
+              label={t('accountant.fullName')}
+              value={form.name}
+              onChange={(e) => patch({ name: e.target.value })}
+            />
             <Input
               label={t('accountant.username')}
               autoCapitalize="none"
@@ -138,13 +165,21 @@ export default function TeamPage() {
               hint={t('accountant.passwordHint')}
             />
             {createState.error && (
-              <p className="font-tajawal text-sm text-red-700" role="alert">{errorMessage(createState.error, t)}</p>
+              <p className="font-tajawal text-sm text-red-700" role="alert">
+                {errorMessage(createState.error, t)}
+              </p>
             )}
             <div className="flex gap-2">
               <Button type="submit" loading={createState.isLoading} disabled={!validForm(form)}>
                 {t('accountant.createStaff')}
               </Button>
-              <Button variant="ghost" onClick={() => { setAdding(false); setForm(emptyForm); }}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setAdding(false);
+                  setForm(emptyForm);
+                }}
+              >
                 {t('common.cancel')}
               </Button>
             </div>
@@ -155,7 +190,11 @@ export default function TeamPage() {
       {staff.isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : staff.isError ? (
-        <ErrorState title={t('errors.generic')} description={errorMessage(staff.error, t)} onRetry={staff.refetch} />
+        <ErrorState
+          title={t('errors.generic')}
+          description={errorMessage(staff.error, t)}
+          onRetry={staff.refetch}
+        />
       ) : staff.data.items.length === 0 ? (
         <EmptyState title={t('accountant.noStaff')} description={t('accountant.teamHint')} />
       ) : (
@@ -165,7 +204,9 @@ export default function TeamPage() {
               <Card className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-cairo text-base font-extrabold text-navy">{person.name}</p>
+                    <p className="truncate font-cairo text-base font-extrabold text-navy">
+                      {person.name}
+                    </p>
                     <p className="font-tajawal text-xs text-navy/55">@{person.username}</p>
                   </div>
                   <Badge tone={person.isActive ? 'success' : 'neutral'}>
@@ -188,7 +229,9 @@ export default function TeamPage() {
         </ul>
       )}
       {updateState.error && (
-        <p className="font-tajawal text-sm text-red-700" role="alert">{errorMessage(updateState.error, t)}</p>
+        <p className="font-tajawal text-sm text-red-700" role="alert">
+          {errorMessage(updateState.error, t)}
+        </p>
       )}
     </div>
   );
